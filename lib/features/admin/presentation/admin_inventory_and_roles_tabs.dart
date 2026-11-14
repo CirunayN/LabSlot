@@ -174,7 +174,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<String>(
-                                value: selectedRoom.id,
+                                initialValue: selectedRoom.id,
                                 decoration: const InputDecoration(
                                   labelText: 'Target Laboratory',
                                 ),
@@ -218,7 +218,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                             SizedBox(
                               width: 130,
                               child: DropdownButtonFormField<int>(
-                                value: _selectedRamGb,
+                                initialValue: _selectedRamGb,
                                 decoration: const InputDecoration(
                                   labelText: 'RAM (GB)',
                                 ),
@@ -414,7 +414,7 @@ class AdminRolesAndStrikesTab extends ConsumerWidget {
                         SizedBox(
                           width: 205,
                           child: DropdownButtonFormField<UserRole>(
-                            value: u.role,
+                            initialValue: u.role,
                             decoration: const InputDecoration(
                               labelText: 'RBAC Role',
                             ),

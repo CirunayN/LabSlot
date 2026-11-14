@@ -1,4 +1,3 @@
-import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,8 +20,8 @@ class AdminAccreditationReportsTab extends ConsumerStatefulWidget {
 class _AdminAccreditationReportsTabState
     extends ConsumerState<AdminAccreditationReportsTab> {
   String _selectedRoomFilter = 'ALL';
-  DateTime _startDate = DateTime.now().subtract(const Duration(days: 30));
-  DateTime _endDate = DateTime.now();
+  final DateTime _startDate = DateTime.now().subtract(const Duration(days: 30));
+  final DateTime _endDate = DateTime.now();
 
   Future<void> _exportPdfReport(AccreditationReport report) async {
     final dateFmt = DateFormat('MMM d, yyyy');
@@ -148,7 +147,13 @@ class _AdminAccreditationReportsTabState
         ['Room Seated Hours', r.key, r.value],
     ];
 
-    final csvString = const ListToCsvConverter().convert(rows);
+    final csvString = rows
+        .map(
+          (row) => row
+              .map((cell) => '"${cell.toString().replaceAll('"', '""')}"')
+              .join(','),
+        )
+        .join('\n');
 
     showDialog(
       context: context,
@@ -239,7 +244,7 @@ class _AdminAccreditationReportsTabState
                       SizedBox(
                         width: 240,
                         child: DropdownButtonFormField<String>(
-                          value: _selectedRoomFilter,
+                          initialValue: _selectedRoomFilter,
                           decoration: const InputDecoration(
                             labelText: 'Laboratory Scope',
                           ),

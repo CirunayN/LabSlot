@@ -333,7 +333,7 @@ class _PendingCheckInCardState extends ConsumerState<_PendingCheckInCard> {
                 SizedBox(
                   width: 145,
                   child: DropdownButtonFormField<String>(
-                    value: _selectedBin,
+                    initialValue: _selectedBin,
                     decoration: const InputDecoration(
                       labelText: 'ID Tray Bin',
                     ),

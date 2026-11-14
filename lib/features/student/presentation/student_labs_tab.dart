@@ -122,14 +122,19 @@ class StudentLabsTab extends ConsumerWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              room.code,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
+                            Expanded(
+                              child: Text(
+                                room.code,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
-                            _buildRoomStatusBadge(room.status),
+                            const SizedBox(width: 6),
+                            Flexible(child: _buildRoomStatusBadge(room.status)),
                           ],
                         ),
                         Text(
@@ -144,13 +149,18 @@ class StudentLabsTab extends ConsumerWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              room.buildingFloor,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: Color(0xFF64748B),
+                            Expanded(
+                              child: Text(
+                                room.buildingFloor,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: Color(0xFF64748B),
+                                ),
                               ),
                             ),
+                            const SizedBox(width: 6),
                             Text(
                               room.status == RoomStatus.open
                                   ? '$freeCount/${roomStations.length} Free'
@@ -185,11 +195,13 @@ class StudentLabsTab extends ConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        '2. Filter PCs by Coursework Software & Hardware Specs',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14.5,
+                      const Expanded(
+                        child: Text(
+                          '2. Filter PCs by Coursework Software & Hardware Specs',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14.5,
+                          ),
                         ),
                       ),
                       if (state.selectedSoftwareFilters.isNotEmpty ||
@@ -474,7 +486,7 @@ class StudentLabsTab extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<int>(
-                              value: selectedDuration,
+                              initialValue: selectedDuration,
                               decoration: const InputDecoration(
                                 labelText: 'Slot Duration',
                               ),
@@ -498,7 +510,7 @@ class StudentLabsTab extends ConsumerWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: selectedCoursework,
+                              initialValue: selectedCoursework,
                               decoration: const InputDecoration(
                                 labelText: 'Primary Coursework Tool',
                               ),
@@ -611,7 +623,7 @@ class StudentLabsTab extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: selectedCategory,
+                      initialValue: selectedCategory,
                       decoration: const InputDecoration(
                         labelText: 'Hardware / Software Issue Category',
                       ),
@@ -744,32 +756,38 @@ class _PcStationCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.desktop_windows_rounded,
-                        size: 18, color: borderColor),
-                    const SizedBox(width: 6),
+                        size: 16, color: borderColor),
+                    const SizedBox(width: 4),
                     Text(
                       station.stationNumber,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 14,
+                        fontSize: 13,
                       ),
                     ),
                   ],
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: badgeBg,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    station.status.label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: badgeFg,
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      station.status.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: badgeFg,
+                      ),
                     ),
                   ),
                 ),
