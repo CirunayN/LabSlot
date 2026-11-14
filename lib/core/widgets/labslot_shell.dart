@@ -1,0 +1,398 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../features/admin/presentation/admin_inventory_and_roles_tabs.dart';
+import '../../features/admin/presentation/admin_reports_tab.dart';
+import '../../features/custodian/presentation/custodian_desk_tab.dart';
+import '../../features/custodian/presentation/custodian_operations_tabs.dart';
+import '../../features/student/presentation/student_labs_tab.dart';
+import '../../features/student/presentation/student_pass_and_chat_tabs.dart';
+import '../config/supabase_config.dart';
+import '../models/labslot_models.dart';
+import '../providers/labslot_controller.dart';
+import '../theme/app_theme.dart';
+
+class LabSlotShell extends ConsumerStatefulWidget {
+  const LabSlotShell({super.key});
+
+  @override
+  ConsumerState<LabSlotShell> createState() => _LabSlotShellState();
+}
+
+class _LabSlotShellState extends ConsumerState<LabSlotShell> {
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(labSlotProvider);
+    final controller = ref.read(labSlotProvider.notifier);
+    final user = state.currentUser;
+
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
+
+    final navItems = _buildNavItemsForRole(user.role, state);
+    final safeIndex = _selectedIndex >= navItems.length ? 0 : _selectedIndex;
+
+    return Scaffold(
+      appBar: AppBar(
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryBlue.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.35),
+                ),
+              ),
+              child: const Icon(
+                Icons.desktop_windows_rounded,
+                color: AppTheme.primaryBlue,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'LabSlot',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 17,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _roleColor(user.role).withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: _roleColor(user.role).withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          user.role.label,
+                          style: TextStyle(
+                            color: _roleColor(user.role),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (user.role == UserRole.student &&
+                          user.strikeCount > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: user.isSuspended
+                                ? AppTheme.reservedBg
+                                : AppTheme.warningBg,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Strikes: ${user.strikeCount}/3',
+                            style: TextStyle(
+                              color: user.isSuspended
+                                  ? AppTheme.reservedRed
+                                  : AppTheme.warningAmber,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Text(
+                    '${user.fullName} (${user.studentIdNumber})',
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 11.5,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: (SupabaseConfig.isConfigured
+                        ? AppTheme.availableGreen
+                        : AppTheme.primaryBlue)
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    SupabaseConfig.isConfigured
+                        ? Icons.cloud_done_rounded
+                        : Icons.bolt_rounded,
+                    size: 13,
+                    color: SupabaseConfig.isConfigured
+                        ? AppTheme.availableGreen
+                        : AppTheme.primaryBlue,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    SupabaseConfig.isConfigured
+                        ? 'Supabase Live'
+                        : 'Realtime Store',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: SupabaseConfig.isConfigured
+                          ? AppTheme.availableGreen
+                          : AppTheme.primaryBlue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          PopupMenuButton<String>(
+            key: const Key('actor-switcher-menu'),
+            tooltip: 'Switch Actor / Test RBAC Role',
+            icon: const Icon(Icons.switch_account_rounded),
+            onSelected: (userId) {
+              setState(() => _selectedIndex = 0);
+              controller.loginAsDemoUser(userId);
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem<String>(
+                enabled: false,
+                child: Text(
+                  'QUICK RBAC ACTOR SWITCHER',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryBlue,
+                  ),
+                ),
+              ),
+              const PopupMenuDivider(),
+              ...state.users.map(
+                (u) => PopupMenuItem<String>(
+                  value: u.id,
+                  child: Row(
+                    children: [
+                      Icon(
+                        u.id == user.id
+                            ? Icons.radio_button_checked
+                            : Icons.person_outline,
+                        size: 18,
+                        color: _roleColor(u.role),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              u.fullName,
+                              style: TextStyle(
+                                fontWeight: u.id == user.id
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              '${u.role.label}${u.role == UserRole.student ? " • Strikes: ${u.strikeCount}/3" : ""}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          IconButton(
+            key: const Key('sign-out-button'),
+            tooltip: 'Sign Out',
+            onPressed: () {
+              setState(() => _selectedIndex = 0);
+              controller.signOut();
+            },
+            icon: const Icon(Icons.logout_rounded),
+          ),
+          const SizedBox(width: 6),
+        ],
+      ),
+      body: IndexedStack(
+        index: safeIndex,
+        children: navItems.map((item) => item.page).toList(),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: safeIndex,
+        onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
+        destinations: navItems
+            .map(
+              (item) => NavigationDestination(
+                icon: Badge(
+                  isLabelVisible: item.badgeCount > 0,
+                  label: Text('${item.badgeCount}'),
+                  child: Icon(item.icon),
+                ),
+                selectedIcon: Badge(
+                  isLabelVisible: item.badgeCount > 0,
+                  label: Text('${item.badgeCount}'),
+                  child: Icon(item.selectedIcon, color: AppTheme.primaryBlue),
+                ),
+                label: item.label,
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  List<_RoleNavItem> _buildNavItemsForRole(
+    UserRole role,
+    LabSlotState state,
+  ) {
+    switch (role) {
+      case UserRole.student:
+        final hasActivePass = state.activeBookingForCurrentUser != null;
+        return [
+          _RoleNavItem(
+            label: 'Live Labs & PCs',
+            icon: Icons.grid_view_outlined,
+            selectedIcon: Icons.grid_view_rounded,
+            page: StudentLabsTab(
+              onBookedNavigateToPass: () => setState(() => _selectedIndex = 1),
+            ),
+          ),
+          _RoleNavItem(
+            label: 'Booking Pass',
+            icon: Icons.qr_code_2_outlined,
+            selectedIcon: Icons.qr_code_2_rounded,
+            badgeCount: hasActivePass ? 1 : 0,
+            page: const StudentBookingPassTab(),
+          ),
+          const _RoleNavItem(
+            label: 'Custodian Chat',
+            icon: Icons.support_agent_outlined,
+            selectedIcon: Icons.support_agent_rounded,
+            page: StudentHelpDeskChatTab(),
+          ),
+        ];
+
+      case UserRole.custodian:
+        final pendingQueueCount = state.pendingCheckInBookings.length;
+        final openTicketsCount = state.maintenanceTickets
+            .where((t) => !t.isResolved)
+            .length;
+        final activeThreadsCount = state.chatMessages
+            .map((m) => m.studentId)
+            .toSet()
+            .length;
+
+        return [
+          _RoleNavItem(
+            label: 'Check-In & ID Vault',
+            icon: Icons.badge_outlined,
+            selectedIcon: Icons.badge_rounded,
+            badgeCount: pendingQueueCount,
+            page: const CustodianDeskTab(),
+          ),
+          _RoleNavItem(
+            label: 'Rooms & Maintenance',
+            icon: Icons.build_circle_outlined,
+            selectedIcon: Icons.build_circle_rounded,
+            badgeCount: openTicketsCount,
+            page: const CustodianRoomsAndMaintenanceTab(),
+          ),
+          _RoleNavItem(
+            label: 'Help Desk Inbox',
+            icon: Icons.forum_outlined,
+            selectedIcon: Icons.forum_rounded,
+            badgeCount: activeThreadsCount,
+            page: const CustodianHelpDeskInboxTab(),
+          ),
+        ];
+
+      case UserRole.admin:
+        final flaggedStudents = state.users
+            .where((u) => u.role == UserRole.student && u.isSuspended)
+            .length;
+        return [
+          const _RoleNavItem(
+            label: 'Lab & PC Inventory',
+            icon: Icons.devices_outlined,
+            selectedIcon: Icons.devices_rounded,
+            page: AdminInventoryTab(),
+          ),
+          _RoleNavItem(
+            label: 'Roles & Strikes',
+            icon: Icons.admin_panel_settings_outlined,
+            selectedIcon: Icons.admin_panel_settings_rounded,
+            badgeCount: flaggedStudents,
+            page: const AdminRolesAndStrikesTab(),
+          ),
+          const _RoleNavItem(
+            label: 'CHED Reports',
+            icon: Icons.analytics_outlined,
+            selectedIcon: Icons.analytics_rounded,
+            page: AdminAccreditationReportsTab(),
+          ),
+        ];
+    }
+  }
+
+  Color _roleColor(UserRole role) {
+    switch (role) {
+      case UserRole.student:
+        return AppTheme.primaryBlue;
+      case UserRole.custodian:
+        return AppTheme.availableGreen;
+      case UserRole.admin:
+        return AppTheme.primaryIndigo;
+    }
+  }
+}
+
+class _RoleNavItem {
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+  final Widget page;
+  final int badgeCount;
+
+  const _RoleNavItem({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+    required this.page,
+    this.badgeCount = 0,
+  });
+}
