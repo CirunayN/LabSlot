@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/labslot_models.dart';
 
@@ -126,7 +128,117 @@ class LabSlotController extends Notifier<LabSlotState> {
 
   @override
   LabSlotState build() {
-    return _createSeedState();
+    final seed = _createSeedState();
+    if (SupabaseConfig.isLiveConnected) {
+      Future.microtask(syncFromSupabase);
+    }
+    return seed;
+  }
+
+  void _syncToCloud(Future<void> Function(SupabaseClient client) task) {
+    final client = SupabaseConfig.clientOrNull;
+    if (client == null || !SupabaseConfig.isLiveConnected) return;
+    unawaited(
+      task(client).catchError((_) {
+        // Keep optimistic UI state active if offline or table not yet created
+      }),
+    );
+  }
+
+  Future<ActionResult> syncFromSupabase() async {
+    final client = SupabaseConfig.clientOrNull;
+    if (client == null || !SupabaseConfig.isLiveConnected) {
+      return const ActionResult.err('Supabase client is not initialized.');
+    }
+
+    try {
+      final roomsRows = await client.from('lab_rooms').select();
+      if (roomsRows.isEmpty) {
+        // Auto-seed Supabase tables from our initial state if empty
+        await client
+            .from('profiles')
+            .upsert(state.users.map((u) => u.toMap()).toList());
+        await client
+            .from('lab_rooms')
+            .upsert(state.rooms.map((r) => r.toMap()).toList());
+        await client
+            .from('pc_stations')
+            .upsert(state.stations.map((s) => s.toMap()).toList());
+        await client
+            .from('bookings')
+            .upsert(state.bookings.map((b) => b.toMap()).toList());
+        await client
+            .from('maintenance_tickets')
+            .upsert(state.maintenanceTickets.map((t) => t.toMap()).toList());
+        await client
+            .from('chat_messages')
+            .upsert(state.chatMessages.map((m) => m.toMap()).toList());
+        return const ActionResult.ok(
+          'Auto-seeded Supabase PostgreSQL tables with LabSlot rooms & 36 PCs!',
+        );
+      }
+
+      final profilesRows = await client.from('profiles').select();
+      final stationsRows = await client.from('pc_stations').select();
+      final bookingsRows = await client
+          .from('bookings')
+          .select()
+          .order('scheduled_start', ascending: false);
+      final ticketsRows = await client
+          .from('maintenance_tickets')
+          .select()
+          .order('created_at', ascending: false);
+      final chatsRows = await client
+          .from('chat_messages')
+          .select()
+          .order('created_at', ascending: true);
+
+      final loadedUsers = profilesRows.isNotEmpty
+          ? profilesRows.map(UserProfile.fromMap).toList()
+          : state.users;
+      final loadedRooms = roomsRows.map(LabRoom.fromMap).toList();
+      final loadedStations = stationsRows.isNotEmpty
+          ? stationsRows.map(PcStation.fromMap).toList()
+          : state.stations;
+      final loadedBookings = bookingsRows.isNotEmpty
+          ? bookingsRows.map(Booking.fromMap).toList()
+          : state.bookings;
+      final loadedTickets = ticketsRows.isNotEmpty
+          ? ticketsRows.map(MaintenanceTicket.fromMap).toList()
+          : state.maintenanceTickets;
+      final loadedChats = chatsRows.isNotEmpty
+          ? chatsRows.map(ChatMessage.fromMap).toList()
+          : state.chatMessages;
+
+      // Ensure stations exist in Supabase if only lab_rooms was seeded
+      if (stationsRows.isEmpty && state.stations.isNotEmpty) {
+        await client
+            .from('pc_stations')
+            .upsert(state.stations.map((s) => s.toMap()).toList());
+      }
+
+      final currentId = state.currentUser?.id;
+      final updatedCurrent = currentId != null
+          ? loadedUsers.firstWhere(
+              (u) => u.id == currentId,
+              orElse: () => loadedUsers.first,
+            )
+          : state.currentUser;
+
+      state = state.copyWith(
+        users: loadedUsers,
+        rooms: loadedRooms,
+        stations: loadedStations,
+        bookings: loadedBookings,
+        maintenanceTickets: loadedTickets,
+        chatMessages: loadedChats,
+        currentUser: updatedCurrent,
+      );
+
+      return const ActionResult.ok('Synced live data from Supabase PostgreSQL.');
+    } catch (e) {
+      return ActionResult.err('Using local cache (run schema.sql in Supabase): $e');
+    }
   }
 
   static LabSlotState _createSeedState() {
@@ -544,12 +656,17 @@ class LabSlotController extends Notifier<LabSlotState> {
               .maybeSingle();
           if (profileMap != null) {
             final profile = UserProfile.fromMap(profileMap);
-            state = state.copyWith(currentUser: profile);
+            final exists = state.users.any((u) => u.id == profile.id);
+            state = state.copyWith(
+              users: exists ? state.users : [profile, ...state.users],
+              currentUser: profile,
+            );
+            await syncFromSupabase();
             return ActionResult.ok('Welcome back, ${profile.fullName}!');
           }
         }
-      } catch (e) {
-        return ActionResult.err('Supabase login failed: $e');
+      } catch (_) {
+        // Fallback to seeded demo credentials if user hasn't been added to auth.users yet
       }
     }
 
@@ -561,7 +678,7 @@ class LabSlotController extends Notifier<LabSlotState> {
       return ActionResult.ok('Signed in as ${match.first.fullName}.');
     }
 
-    // Create a local student session for testing new emails
+    // Create a new student profile and persist to Supabase
     final newProfile = UserProfile(
       id: 'usr-${DateTime.now().millisecondsSinceEpoch}',
       studentIdNumber:
@@ -575,7 +692,81 @@ class LabSlotController extends Notifier<LabSlotState> {
       users: [...state.users, newProfile],
       currentUser: newProfile,
     );
+    _syncToCloud((client) async {
+      await client.from('profiles').upsert(newProfile.toMap());
+    });
     return ActionResult.ok('Signed in as ${newProfile.fullName}.');
+  }
+
+  Future<ActionResult> signUpWithCredentials({
+    required String email,
+    required String password,
+    required String fullName,
+    required String studentIdNumber,
+    required String courseDepartment,
+    required UserRole role,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanName = fullName.trim();
+    final cleanIdNum = studentIdNumber.trim();
+    if (cleanEmail.isEmpty ||
+        password.length < 6 ||
+        cleanName.isEmpty ||
+        cleanIdNum.isEmpty) {
+      return const ActionResult.err(
+        'Please complete all fields (password must be at least 6 characters).',
+      );
+    }
+
+    String newUserId = 'usr-${DateTime.now().millisecondsSinceEpoch}';
+
+    if (SupabaseConfig.isLiveConnected) {
+      try {
+        final client = SupabaseConfig.clientOrNull!;
+        final authRes = await client.auth.signUp(
+          email: cleanEmail,
+          password: password,
+          data: {
+            'full_name': cleanName,
+            'student_id_number': cleanIdNum,
+            'course_department': courseDepartment.trim(),
+            'role': role.dbValue,
+          },
+        );
+        if (authRes.user != null) {
+          newUserId = authRes.user!.id;
+        }
+      } catch (e) {
+        return ActionResult.err('Supabase sign-up error: $e');
+      }
+    }
+
+    final newProfile = UserProfile(
+      id: newUserId,
+      studentIdNumber: cleanIdNum,
+      email: cleanEmail,
+      fullName: cleanName,
+      role: role,
+      courseDepartment: courseDepartment.trim().isEmpty
+          ? 'BS Information Technology'
+          : courseDepartment.trim(),
+    );
+
+    state = state.copyWith(
+      users: [
+        newProfile,
+        ...state.users.where((u) => u.id != newProfile.id),
+      ],
+      currentUser: newProfile,
+    );
+
+    _syncToCloud((client) async {
+      await client.from('profiles').upsert(newProfile.toMap());
+    });
+
+    return ActionResult.ok(
+      'Account created & signed in as ${newProfile.fullName} (${newProfile.role.label}).',
+    );
   }
 
   void signOut() {
@@ -705,6 +896,13 @@ class LabSlotController extends Notifier<LabSlotState> {
       bookings: [newBooking, ...state.bookings],
     );
 
+    final updatedStation = updatedStations[stationIndex];
+    _syncToCloud((client) async {
+      await client.from('profiles').upsert(user.toMap());
+      await client.from('pc_stations').upsert(updatedStation.toMap());
+      await client.from('bookings').upsert(newBooking.toMap());
+    });
+
     return ActionResult.ok(
       'Reserved ${station.stationNumber} in ${room.code}! Present QR pass ($qrCode) within 10 minutes.',
     );
@@ -741,6 +939,15 @@ class LabSlotController extends Notifier<LabSlotState> {
       bookings: updatedBookings,
       stations: updatedStations,
     );
+
+    final updatedBooking = updatedBookings[idx];
+    final targetStation =
+        updatedStations.firstWhere((s) => s.id == booking.stationId);
+    _syncToCloud((client) async {
+      await client.from('bookings').upsert(updatedBooking.toMap());
+      await client.from('pc_stations').upsert(targetStation.toMap());
+    });
+
     return ActionResult.ok(
       'Reservation for ${booking.stationNumber} has been cancelled and released.',
     );
@@ -793,6 +1000,17 @@ class LabSlotController extends Notifier<LabSlotState> {
       users: updatedUsers,
       currentUser: updatedCurrent,
     );
+
+    final expiredBooking = updatedBookings[idx];
+    final releasedStation =
+        updatedStations.firstWhere((s) => s.id == booking.stationId);
+    final penalizedUser =
+        updatedUsers.firstWhere((u) => u.id == booking.studentId);
+    _syncToCloud((client) async {
+      await client.from('bookings').upsert(expiredBooking.toMap());
+      await client.from('pc_stations').upsert(releasedStation.toMap());
+      await client.from('profiles').upsert(penalizedUser.toMap());
+    });
 
     return ActionResult.ok(
       '10-minute grace period expired: ${booking.stationNumber} auto-released to Available and +1 no-show strike recorded.',
@@ -871,6 +1089,12 @@ class LabSlotController extends Notifier<LabSlotState> {
       maintenanceTickets: [ticket, ...state.maintenanceTickets],
     );
 
+    final quarantinedStation = updatedStations[stationIdx];
+    _syncToCloud((client) async {
+      await client.from('pc_stations').upsert(quarantinedStation.toMap());
+      await client.from('maintenance_tickets').upsert(ticket.toMap());
+    });
+
     return ActionResult.ok(
       '${station.stationNumber} quarantined as Under Maintenance and queued for custodian inspection.',
     );
@@ -930,6 +1154,9 @@ class LabSlotController extends Notifier<LabSlotState> {
     );
 
     state = state.copyWith(chatMessages: [...state.chatMessages, msg]);
+    _syncToCloud((client) async {
+      await client.from('chat_messages').upsert(msg.toMap());
+    });
     return const ActionResult.ok('Support message sent.');
   }
 
@@ -995,6 +1222,16 @@ class LabSlotController extends Notifier<LabSlotState> {
       stations: updatedStations,
     );
 
+    final checkedInBooking = updatedBookings[idx];
+    _syncToCloud((client) async {
+      await client.from('bookings').upsert(checkedInBooking.toMap());
+      if (stationIdx != -1) {
+        await client
+            .from('pc_stations')
+            .upsert(updatedStations[stationIdx].toMap());
+      }
+    });
+
     return ActionResult.ok(
       'Checked in ${booking.studentName} at ${booking.stationNumber}. Physical ID stored in $bin.',
     );
@@ -1035,6 +1272,14 @@ class LabSlotController extends Notifier<LabSlotState> {
       stations: updatedStations,
     );
 
+    final completedBooking = updatedBookings[idx];
+    final freedStation =
+        updatedStations.firstWhere((s) => s.id == booking.stationId);
+    _syncToCloud((client) async {
+      await client.from('bookings').upsert(completedBooking.toMap());
+      await client.from('pc_stations').upsert(freedStation.toMap());
+    });
+
     return ActionResult.ok(
       'Checked out ${booking.studentName}. Returned physical ID from $returnedBin and restored ${booking.stationNumber} to Available.',
     );
@@ -1062,6 +1307,10 @@ class LabSlotController extends Notifier<LabSlotState> {
     );
 
     state = state.copyWith(rooms: updatedRooms);
+    final updatedRoom = updatedRooms[idx];
+    _syncToCloud((client) async {
+      await client.from('lab_rooms').upsert(updatedRoom.toMap());
+    });
     return ActionResult.ok(
       'Updated ${updatedRooms[idx].code} status to "${newStatus.label}".',
     );
@@ -1122,6 +1371,14 @@ class LabSlotController extends Notifier<LabSlotState> {
       stations: updatedStations,
     );
 
+    final resolvedTicket = updatedTickets[idx];
+    final restoredStation =
+        updatedStations.firstWhere((s) => s.id == ticket.stationId);
+    _syncToCloud((client) async {
+      await client.from('maintenance_tickets').upsert(resolvedTicket.toMap());
+      await client.from('pc_stations').upsert(restoredStation.toMap());
+    });
+
     return ActionResult.ok(
       'Restored ${ticket.stationNumber} (${ticket.roomName}) to Available.',
     );
@@ -1179,6 +1436,13 @@ class LabSlotController extends Notifier<LabSlotState> {
       stations: [...state.stations, ...newStations],
     );
 
+    _syncToCloud((client) async {
+      await client.from('lab_rooms').upsert(newRoom.toMap());
+      await client
+          .from('pc_stations')
+          .upsert(newStations.map((s) => s.toMap()).toList());
+    });
+
     return ActionResult.ok(
       'Created $cleanCode with $initialStationsCount PC stations.',
     );
@@ -1217,6 +1481,10 @@ class LabSlotController extends Notifier<LabSlotState> {
         installedSoftware: installedSoftware,
       );
       state = state.copyWith(stations: updatedStations);
+      final target = updatedStations[existingIdx];
+      _syncToCloud((client) async {
+        await client.from('pc_stations').upsert(target.toMap());
+      });
       return ActionResult.ok('Updated specs & software for $cleanNumber.');
     } else {
       final newStation = PcStation(
@@ -1231,6 +1499,9 @@ class LabSlotController extends Notifier<LabSlotState> {
       );
       updatedStations.add(newStation);
       state = state.copyWith(stations: updatedStations);
+      _syncToCloud((client) async {
+        await client.from('pc_stations').upsert(newStation.toMap());
+      });
       return ActionResult.ok('Added new workstation $cleanNumber.');
     }
   }
@@ -1253,6 +1524,10 @@ class LabSlotController extends Notifier<LabSlotState> {
       users: updatedUsers,
       currentUser: updatedCurrent,
     );
+    final targetUser = updatedUsers[idx];
+    _syncToCloud((client) async {
+      await client.from('profiles').upsert(targetUser.toMap());
+    });
     return ActionResult.ok(
       'Assigned role "${newRole.label}" to ${updatedUsers[idx].fullName}.',
     );
@@ -1278,6 +1553,10 @@ class LabSlotController extends Notifier<LabSlotState> {
       users: updatedUsers,
       currentUser: updatedCurrent,
     );
+    final targetUser = updatedUsers[idx];
+    _syncToCloud((client) async {
+      await client.from('profiles').upsert(targetUser.toMap());
+    });
     return ActionResult.ok(
       suspended
           ? '${updatedUsers[idx].fullName} now has $clamped strikes (Booking Suspended).'
@@ -1387,3 +1666,4 @@ class LabSlotController extends Notifier<LabSlotState> {
 final labSlotProvider = NotifierProvider<LabSlotController, LabSlotState>(
   LabSlotController.new,
 );
+

@@ -200,6 +200,18 @@ class LabRoom {
           map['current_subject_note']?.toString() ?? 'Open Lab Session',
     );
   }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'code': code,
+        'name': name,
+        'building_floor': buildingFloor,
+        'status': status.dbValue,
+        'total_capacity': totalCapacity,
+        'open_time': openTime,
+        'close_time': closeTime,
+        'current_subject_note': currentSubjectNote,
+      };
 }
 
 class PcStation {
@@ -276,6 +288,20 @@ class PcStation {
       defectNotes: map['defect_notes']?.toString(),
     );
   }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'room_id': roomId,
+        'station_number': stationNumber,
+        'status': status.dbValue,
+        'cpu': cpu,
+        'ram_gb': ramGb,
+        'gpu': gpu,
+        'installed_software': installedSoftware,
+        'is_defective': isDefective,
+        'defect_category': defectCategory,
+        'defect_notes': defectNotes,
+      };
 }
 
 class Booking {
@@ -357,6 +383,61 @@ class Booking {
       qrAuthCode: qrAuthCode,
     );
   }
+
+  factory Booking.fromMap(Map<String, dynamic> map) {
+    final now = DateTime.now();
+    return Booking(
+      id: map['id']?.toString() ?? '',
+      studentId: map['student_id']?.toString() ?? '',
+      studentName: map['student_name']?.toString() ?? 'Student',
+      studentIdNumber: map['student_id_number']?.toString() ?? 'STU-0000',
+      roomId: map['room_id']?.toString() ?? '',
+      roomName: map['room_name']?.toString() ?? 'Computer Lab',
+      stationId: map['station_id']?.toString() ?? '',
+      stationNumber: map['station_number']?.toString() ?? 'PC-01',
+      courseworkTag: map['coursework_tag']?.toString() ?? 'Flutter',
+      scheduledStart:
+          DateTime.tryParse(map['scheduled_start']?.toString() ?? '') ?? now,
+      scheduledEnd: DateTime.tryParse(map['scheduled_end']?.toString() ?? '') ??
+          now.add(const Duration(hours: 1)),
+      durationHours: (map['duration_hours'] as num?)?.toInt() ?? 1,
+      gracePeriodDeadline:
+          DateTime.tryParse(map['grace_period_deadline']?.toString() ?? '') ??
+              now.add(const Duration(minutes: 10)),
+      checkInTime: map['check_in_time'] != null
+          ? DateTime.tryParse(map['check_in_time'].toString())
+          : null,
+      checkOutTime: map['check_out_time'] != null
+          ? DateTime.tryParse(map['check_out_time'].toString())
+          : null,
+      status: BookingStatus.fromString(map['status']?.toString() ?? 'reserved'),
+      idHeld: (map['id_held'] as bool?) ?? false,
+      idBinLocation: map['id_bin_location']?.toString(),
+      qrAuthCode: map['qr_auth_code']?.toString() ?? 'LS-0000',
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'student_id': studentId,
+        'student_name': studentName,
+        'student_id_number': studentIdNumber,
+        'room_id': roomId,
+        'room_name': roomName,
+        'station_id': stationId,
+        'station_number': stationNumber,
+        'coursework_tag': courseworkTag,
+        'scheduled_start': scheduledStart.toUtc().toIso8601String(),
+        'scheduled_end': scheduledEnd.toUtc().toIso8601String(),
+        'duration_hours': durationHours,
+        'grace_period_deadline': gracePeriodDeadline.toUtc().toIso8601String(),
+        'check_in_time': checkInTime?.toUtc().toIso8601String(),
+        'check_out_time': checkOutTime?.toUtc().toIso8601String(),
+        'status': status.dbValue,
+        'id_held': idHeld,
+        'id_bin_location': idBinLocation,
+        'qr_auth_code': qrAuthCode,
+      };
 }
 
 class MaintenanceTicket {
@@ -421,6 +502,49 @@ class MaintenanceTicket {
       resolvedAt: resolvedAt ?? this.resolvedAt,
     );
   }
+
+  factory MaintenanceTicket.fromMap(Map<String, dynamic> map) {
+    return MaintenanceTicket(
+      id: map['id']?.toString() ?? '',
+      roomId: map['room_id']?.toString() ?? '',
+      roomName: map['room_name']?.toString() ?? '',
+      stationId: map['station_id']?.toString() ?? '',
+      stationNumber: map['station_number']?.toString() ?? 'PC-01',
+      reportedById: map['reported_by_id']?.toString() ?? '',
+      reportedByName: map['reported_by_name']?.toString() ?? 'User',
+      lastUserId: map['last_user_id']?.toString(),
+      lastUserName: map['last_user_name']?.toString(),
+      issueCategory: map['issue_category']?.toString() ?? 'Hardware Fault',
+      description: map['description']?.toString() ?? '',
+      isResolved: (map['is_resolved'] as bool?) ?? false,
+      repairNotes: map['repair_notes']?.toString(),
+      resolvedByName: map['resolved_by_name']?.toString(),
+      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+      resolvedAt: map['resolved_at'] != null
+          ? DateTime.tryParse(map['resolved_at'].toString())
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'room_id': roomId,
+        'room_name': roomName,
+        'station_id': stationId,
+        'station_number': stationNumber,
+        'reported_by_id': reportedById,
+        'reported_by_name': reportedByName,
+        'last_user_id': lastUserId,
+        'last_user_name': lastUserName,
+        'issue_category': issueCategory,
+        'description': description,
+        'is_resolved': isResolved,
+        'repair_notes': repairNotes,
+        'resolved_by_name': resolvedByName,
+        'created_at': createdAt.toUtc().toIso8601String(),
+        'resolved_at': resolvedAt?.toUtc().toIso8601String(),
+      };
 }
 
 class ChatMessage {
@@ -451,6 +575,39 @@ class ChatMessage {
     required this.message,
     required this.createdAt,
   });
+
+  factory ChatMessage.fromMap(Map<String, dynamic> map) {
+    return ChatMessage(
+      id: map['id']?.toString() ?? '',
+      bookingId: map['booking_id']?.toString(),
+      roomId: map['room_id']?.toString() ?? '',
+      roomName: map['room_name']?.toString() ?? 'Computer Lab',
+      stationNumber: map['station_number']?.toString() ?? 'PC-01',
+      studentId: map['student_id']?.toString() ?? '',
+      studentName: map['student_name']?.toString() ?? 'Student',
+      senderId: map['sender_id']?.toString() ?? '',
+      senderName: map['sender_name']?.toString() ?? 'User',
+      senderRole: UserRole.fromString(map['sender_role']?.toString() ?? 'student'),
+      message: map['message']?.toString() ?? '',
+      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'booking_id': bookingId,
+        'room_id': roomId,
+        'room_name': roomName,
+        'station_number': stationNumber,
+        'student_id': studentId,
+        'student_name': studentName,
+        'sender_id': senderId,
+        'sender_name': senderName,
+        'sender_role': senderRole.dbValue,
+        'message': message,
+        'created_at': createdAt.toUtc().toIso8601String(),
+      };
 }
 
 class AccreditationReport {
