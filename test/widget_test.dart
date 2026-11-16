@@ -19,11 +19,9 @@ void main() {
     });
 
     test('UC1 & UC2: Student filters PC stations and reserves an available slot', () {
-      // Logged in by default as Marco Santos (usr-student-1, 0 strikes)
       final initialState = container.read(labSlotProvider);
       expect(initialState.currentUser?.id, 'usr-student-1');
 
-      // Filter by AutoCAD 2025 in ComLab 3 (room-comlab-3)
       controller.selectRoom('room-comlab-3');
       controller.toggleSoftwareFilter('AutoCAD 2025');
       final filteredStations = container
@@ -37,7 +35,6 @@ void main() {
         isTrue,
       );
 
-      // Reserve PC-01 in ComLab 3
       final result = controller.reservePcStationSlot(
         stationId: 'st-c3-1',
         durationHours: 2,
@@ -51,7 +48,6 @@ void main() {
       expect(activeBooking, isNotNull);
       expect(activeBooking?.qrAuthCode, startsWith('LS-'));
 
-      // Attempting a second active reservation is blocked (One-Active-Booking validation)
       final duplicateAttempt = controller.reservePcStationSlot(
         stationId: 'st-c3-2',
         durationHours: 1,
@@ -61,7 +57,6 @@ void main() {
     });
 
     test('UC2 Include Validation: 3-strike student is restricted from advance booking', () {
-      // Switch to Kevin Lim (usr-student-3) who has 3/3 strikes
       controller.loginAsDemoUser('usr-student-3');
       expect(container.read(labSlotProvider).currentUser?.strikeCount, 3);
 
@@ -88,7 +83,6 @@ void main() {
       final bookingId =
           container.read(labSlotProvider).activeBookingForCurrentUser!.id;
 
-      // Simulate 10-minute grace period expiration
       final expiryRes = controller.triggerGhostSlotAutoRelease(bookingId);
       expect(expiryRes.success, isTrue);
       expect(
@@ -102,7 +96,6 @@ void main() {
     });
 
     test('UC6 & UC7: Custodian checks in student with ID escrow bin and checks out', () {
-      // Student Marco books PC-01
       controller.loginAsDemoUser('usr-student-1');
       controller.reservePcStationSlot(
         stationId: 'st-c3-1',
@@ -112,17 +105,14 @@ void main() {
       final booking =
           container.read(labSlotProvider).activeBookingForCurrentUser!;
 
-      // Switch to Custodian Ramon (usr-custodian-1)
       controller.loginAsDemoUser('usr-custodian-1');
 
-      // Validation error when ID slot bin is empty
       final emptyBinAttempt = controller.processStudentCheckIn(
         bookingId: booking.id,
         idBinLocation: '   ',
       );
       expect(emptyBinAttempt.success, isFalse);
 
-      // Valid check-in with Tray Bin-09
       final checkInRes = controller.processStudentCheckIn(
         bookingId: booking.id,
         idBinLocation: 'Bin-09',
@@ -137,7 +127,6 @@ void main() {
       expect(updatedBooking.idHeld, isTrue);
       expect(updatedBooking.idBinLocation, 'Bin-09');
 
-      // Check Out & Return ID
       final checkOutRes = controller.processStudentCheckOut(booking.id);
       expect(checkOutRes.success, isTrue);
 
@@ -164,7 +153,6 @@ void main() {
           .firstWhere((s) => s.id == 'st-c3-2');
       expect(station.status, PcStatus.maintenance);
 
-      // Duplicate open ticket on same station is blocked
       final duplicateTicket = controller.reportDefectivePcStation(
         stationId: 'st-c3-2',
         issueCategory: 'Broken Mouse / Peripheral',
@@ -176,7 +164,6 @@ void main() {
     test('UC11, UC12 & UC13: Administrator manages inventory, resets strikes, and generates report', () {
       controller.loginAsDemoUser('usr-admin-1');
 
-      // Reset Kevin Lim's 3 strikes
       final resetRes = controller.resetOrAdjustStudentStrikes(
         'usr-student-3',
         0,
@@ -189,7 +176,6 @@ void main() {
       expect(kevin.strikeCount, 0);
       expect(kevin.isSuspended, isFalse);
 
-      // Generate Accreditation Report
       final report = controller.generateAccreditationReport(
         startDate: DateTime.now().subtract(const Duration(days: 30)),
         endDate: DateTime.now(),
@@ -208,7 +194,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Default logged in user is Student Marco Santos in LabSlotShell
     expect(find.text('LabSlot'), findsOneWidget);
     expect(find.text('Live Labs & PCs'), findsOneWidget);
   });

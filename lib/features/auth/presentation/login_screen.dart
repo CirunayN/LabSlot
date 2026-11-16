@@ -16,24 +16,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController(
     text: 'marco.santos@campus.edu.ph',
   );
-  final _passwordController = TextEditingController(text: 'labslot2026');
+  final _passwordController = TextEditingController(text: 'password123');
+  final _fullNameController = TextEditingController(text: 'Marco Santos');
+  final _idNumberController = TextEditingController(text: '2024-01042');
+  final _departmentController = TextEditingController(
+    text: 'BS Information Technology (3rd Year)',
+  );
+
+  UserRole _selectedSignUpRole = UserRole.student;
+  bool _isSignUpMode = false;
   bool _isLoading = false;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _fullNameController.dispose();
+    _idNumberController.dispose();
+    _departmentController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSignIn() async {
+  Future<void> _handleAuthAction() async {
     setState(() => _isLoading = true);
-    final res = await ref
-        .read(labSlotProvider.notifier)
-        .signInWithCredentials(
-          email: _emailController.text,
-          password: _passwordController.text,
-        );
+    final controller = ref.read(labSlotProvider.notifier);
+
+    final ActionResult res;
+    if (_isSignUpMode) {
+      res = await controller.signUpWithCredentials(
+        email: _emailController.text,
+        password: _passwordController.text,
+        fullName: _fullNameController.text,
+        studentIdNumber: _idNumberController.text,
+        courseDepartment: _departmentController.text,
+        role: _selectedSignUpRole,
+      );
+    } else {
+      res = await controller.signInWithCredentials(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+    }
+
     if (!mounted) return;
     setState(() => _isLoading = false);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -60,7 +84,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               runSpacing: 24,
               alignment: WrapAlignment.center,
               children: [
-                // Left Card: Credentials Sign-In
+                // Left Card: Credentials Sign-In / Sign-Up
                 SizedBox(
                   width: 420,
                   child: Card(
@@ -146,7 +170,89 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 18),
+                          SegmentedButton<bool>(
+                            segments: const [
+                              ButtonSegment(
+                                value: false,
+                                label: Text('Sign In'),
+                                icon: Icon(Icons.login_rounded, size: 16),
+                              ),
+                              ButtonSegment(
+                                value: true,
+                                label: Text('Create Account'),
+                                icon: Icon(Icons.person_add_alt_1_rounded, size: 16),
+                              ),
+                            ],
+                            selected: {_isSignUpMode},
+                            onSelectionChanged: (selection) {
+                              setState(() => _isSignUpMode = selection.first);
+                            },
+                          ),
+                          const SizedBox(height: 18),
+                          if (_isSignUpMode) ...[
+                            const Text(
+                              'Full Name',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: _fullNameController,
+                              decoration: const InputDecoration(
+                                hintText: 'Marco Santos',
+                                prefixIcon: Icon(Icons.person_outline),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _idNumberController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'School / Staff ID',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DropdownButtonFormField<UserRole>(
+                                    initialValue: _selectedSignUpRole,
+                                    decoration: const InputDecoration(
+                                      labelText: 'RBAC Role',
+                                    ),
+                                    items: [
+                                      for (final r in UserRole.values)
+                                        DropdownMenuItem(
+                                          value: r,
+                                          child: Text(
+                                            r.label,
+                                            style: const TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                    ],
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        setState(() => _selectedSignUpRole = v);
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _departmentController,
+                              decoration: const InputDecoration(
+                                labelText: 'Course / Department',
+                                prefixIcon: Icon(Icons.school_outlined),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           const Text(
                             'Campus Email Address',
                             style: TextStyle(
@@ -186,12 +292,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               key: const Key('sign-in-button'),
-                              onPressed: _isLoading ? null : _handleSignIn,
-                              icon: const Icon(Icons.login_rounded),
+                              onPressed: _isLoading ? null : _handleAuthAction,
+                              icon: Icon(
+                                _isSignUpMode
+                                    ? Icons.person_add_alt_1_rounded
+                                    : Icons.login_rounded,
+                              ),
                               label: Text(
                                 _isLoading
-                                    ? 'Signing in...'
-                                    : 'Sign In to LabSlot',
+                                    ? 'Processing...'
+                                    : (_isSignUpMode
+                                        ? 'Register & Sign In'
+                                        : 'Sign In to LabSlot'),
                               ),
                             ),
                           ),

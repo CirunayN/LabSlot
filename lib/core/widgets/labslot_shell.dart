@@ -135,40 +135,55 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: (SupabaseConfig.isConfigured
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () async {
+                final res = await controller.syncFromSupabase();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(res.message),
+                    backgroundColor: res.success
                         ? AppTheme.availableGreen
-                        : AppTheme.primaryBlue)
-                    .withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    SupabaseConfig.isConfigured
-                        ? Icons.cloud_done_rounded
-                        : Icons.bolt_rounded,
-                    size: 13,
-                    color: SupabaseConfig.isConfigured
-                        ? AppTheme.availableGreen
-                        : AppTheme.primaryBlue,
+                        : AppTheme.warningAmber,
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    SupabaseConfig.isConfigured
-                        ? 'Supabase Live'
-                        : 'Realtime Store',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (SupabaseConfig.isConfigured
+                          ? AppTheme.availableGreen
+                          : AppTheme.primaryBlue)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      SupabaseConfig.isConfigured
+                          ? Icons.cloud_sync_rounded
+                          : Icons.bolt_rounded,
+                      size: 14,
                       color: SupabaseConfig.isConfigured
                           ? AppTheme.availableGreen
                           : AppTheme.primaryBlue,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Text(
+                      SupabaseConfig.isConfigured
+                          ? 'Supabase Live'
+                          : 'Realtime Store',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: SupabaseConfig.isConfigured
+                            ? AppTheme.availableGreen
+                            : AppTheme.primaryBlue,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
