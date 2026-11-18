@@ -40,9 +40,10 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
     final state = ref.watch(labSlotProvider);
     final controller = ref.read(labSlotProvider.notifier);
     final selectedRoom = state.selectedRoom;
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isPhone ? 14 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -51,11 +52,13 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
             runSpacing: 20,
             children: [
               // Card 1: Create New Laboratory Room
-              SizedBox(
-                width: 460,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isPhone ? double.infinity : 460,
+                ),
                 child: Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(18),
+                    padding: EdgeInsets.all(isPhone ? 14 : 18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -161,11 +164,13 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
               ),
 
               // Card 2: Configure PC Hardware Specs & Software Tags
-              SizedBox(
-                width: 480,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isPhone ? double.infinity : 480,
+                ),
                 child: Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(18),
+                    padding: EdgeInsets.all(isPhone ? 14 : 18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -343,9 +348,10 @@ class AdminRolesAndStrikesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(labSlotProvider);
     final controller = ref.read(labSlotProvider.notifier);
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isPhone ? 14 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -374,8 +380,10 @@ class AdminRolesAndStrikesTab extends ConsumerWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
                               u.fullName,
@@ -384,7 +392,6 @@ class AdminRolesAndStrikesTab extends ConsumerWidget {
                                 fontSize: 15,
                               ),
                             ),
-                            const SizedBox(width: 8),
                             if (u.isSuspended)
                               Container(
                                 padding: const EdgeInsets.symmetric(

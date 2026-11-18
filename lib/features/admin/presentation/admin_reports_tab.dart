@@ -159,11 +159,13 @@ class _AdminAccreditationReportsTabState
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('CHED / PACUCOA Compliance CSV Export'),
-        content: SizedBox(
-          width: 540,
-          child: SelectableText(
-            csvString,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        content: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 540),
+            child: SelectableText(
+              csvString,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
           ),
         ),
         actions: [
@@ -201,9 +203,10 @@ class _AdminAccreditationReportsTabState
       startDate: _startDate,
       endDate: _endDate,
     );
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isPhone ? 14 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -241,8 +244,10 @@ class _AdminAccreditationReportsTabState
                     runSpacing: 10,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      SizedBox(
-                        width: 240,
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: isPhone ? double.infinity : 240,
+                        ),
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedRoomFilter,
                           isExpanded: true,
@@ -294,6 +299,7 @@ class _AdminAccreditationReportsTabState
             runSpacing: 14,
             children: [
               _kpiCard(
+                isPhone: isPhone,
                 title: 'Completed Sessions',
                 value: '${report.totalSessionsCompleted}',
                 subtitle: '${report.totalSeatedHours} Total Seated Hours',
@@ -301,6 +307,7 @@ class _AdminAccreditationReportsTabState
                 color: AppTheme.availableGreen,
               ),
               _kpiCard(
+                isPhone: isPhone,
                 title: 'Lab Utilization Rate',
                 value:
                     '${report.utilizationRatePercent.toStringAsFixed(1)}%',
@@ -309,6 +316,7 @@ class _AdminAccreditationReportsTabState
                 color: AppTheme.primaryBlue,
               ),
               _kpiCard(
+                isPhone: isPhone,
                 title: 'Mean Time to Repair (MTTR)',
                 value:
                     '${report.averageRepairTurnaroundHours.toStringAsFixed(1)} hrs',
@@ -318,6 +326,7 @@ class _AdminAccreditationReportsTabState
                 color: const Color(0xFF7C3AED),
               ),
               _kpiCard(
+                isPhone: isPhone,
                 title: 'Ghost-Slots Auto-Released',
                 value: '${report.totalNoShowsAutoReleased}',
                 subtitle: '10-Min Grace Period Enforcement',
@@ -334,11 +343,13 @@ class _AdminAccreditationReportsTabState
             spacing: 18,
             runSpacing: 18,
             children: [
-              SizedBox(
-                width: 460,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isPhone ? double.infinity : 460,
+                ),
                 child: Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(18),
+                    padding: EdgeInsets.all(isPhone ? 14 : 18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -360,11 +371,13 @@ class _AdminAccreditationReportsTabState
                                   flex: 3,
                                   child: Text(
                                     entry.key,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   flex: 4,
                                   child: LinearProgressIndicator(
@@ -393,11 +406,13 @@ class _AdminAccreditationReportsTabState
                   ),
                 ),
               ),
-              SizedBox(
-                width: 460,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isPhone ? double.infinity : 460,
+                ),
                 child: Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(18),
+                    padding: EdgeInsets.all(isPhone ? 14 : 18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -417,12 +432,16 @@ class _AdminAccreditationReportsTabState
                               mainAxisAlignment:
                                   MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  entry.key,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
+                                Expanded(
+                                  child: Text(
+                                    entry.key,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
+                                const SizedBox(width: 8),
                                 Text(
                                   '${entry.value} seated hrs logged',
                                   style: const TextStyle(
@@ -446,14 +465,15 @@ class _AdminAccreditationReportsTabState
   }
 
   Widget _kpiCard({
+    required bool isPhone,
     required String title,
     required String value,
     required String subtitle,
     required IconData icon,
     required Color color,
   }) {
-    return SizedBox(
-      width: 225,
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: isPhone ? double.infinity : 225),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -463,12 +483,15 @@ class _AdminAccreditationReportsTabState
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                  Expanded(
+                    child: Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
                     ),
                   ),
                   Icon(icon, color: color, size: 20),
