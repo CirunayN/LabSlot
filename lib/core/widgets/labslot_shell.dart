@@ -192,7 +192,7 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
         final hasActivePass = state.activeBookingForCurrentUser != null;
         return [
           _RoleNavItem(
-            label: 'Live Labs & PCs',
+            label: 'Labs & PCs',
             icon: Icons.grid_view_outlined,
             selectedIcon: Icons.grid_view_rounded,
             page: StudentLabsTab(
@@ -207,7 +207,7 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
             page: const StudentBookingPassTab(),
           ),
           const _RoleNavItem(
-            label: 'Custodian Chat',
+            label: 'Help Chat',
             icon: Icons.support_agent_outlined,
             selectedIcon: Icons.support_agent_rounded,
             page: StudentHelpDeskChatTab(),
@@ -226,21 +226,21 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
 
         return [
           _RoleNavItem(
-            label: 'Check-In & ID Vault',
+            label: 'ID Check-In',
             icon: Icons.badge_outlined,
             selectedIcon: Icons.badge_rounded,
             badgeCount: pendingQueueCount,
             page: const CustodianDeskTab(),
           ),
           _RoleNavItem(
-            label: 'Rooms & Maintenance',
+            label: 'Rooms & Fix',
             icon: Icons.build_circle_outlined,
             selectedIcon: Icons.build_circle_rounded,
             badgeCount: openTicketsCount,
             page: const CustodianRoomsAndMaintenanceTab(),
           ),
           _RoleNavItem(
-            label: 'Help Desk Inbox',
+            label: 'Help Inbox',
             icon: Icons.forum_outlined,
             selectedIcon: Icons.forum_rounded,
             badgeCount: activeThreadsCount,
@@ -254,7 +254,7 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
             .length;
         return [
           const _RoleNavItem(
-            label: 'Lab & PC Inventory',
+            label: 'Lab Inventory',
             icon: Icons.devices_outlined,
             selectedIcon: Icons.devices_rounded,
             page: AdminInventoryTab(),

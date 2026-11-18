@@ -67,15 +67,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
+
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(isPhone ? 14 : 24),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 460),
             child: Card(
               child: Padding(
-                padding: const EdgeInsets.all(28),
+                padding: EdgeInsets.all(isPhone ? 18 : 28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
