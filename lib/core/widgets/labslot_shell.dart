@@ -7,7 +7,6 @@ import '../../features/custodian/presentation/custodian_desk_tab.dart';
 import '../../features/custodian/presentation/custodian_operations_tabs.dart';
 import '../../features/student/presentation/student_labs_tab.dart';
 import '../../features/student/presentation/student_pass_and_chat_tabs.dart';
-import '../config/supabase_config.dart';
 import '../models/labslot_models.dart';
 import '../providers/labslot_controller.dart';
 import '../theme/app_theme.dart';
@@ -60,67 +59,15 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      const Text(
-                        'LabSlot',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _roleColor(user.role).withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: _roleColor(user.role).withValues(alpha: 0.4),
-                          ),
-                        ),
-                        child: Text(
-                          user.role.label,
-                          style: TextStyle(
-                            color: _roleColor(user.role),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      if (user.role == UserRole.student &&
-                          user.strikeCount > 0) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: user.isSuspended
-                                ? AppTheme.reservedBg
-                                : AppTheme.warningBg,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'Strikes: ${user.strikeCount}/3',
-                            style: TextStyle(
-                              color: user.isSuspended
-                                  ? AppTheme.reservedRed
-                                  : AppTheme.warningAmber,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  const Text(
+                    'LabSlot',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                    ),
                   ),
                   Text(
-                    '${user.fullName} (${user.studentIdNumber})',
+                    user.fullName,
                     style: const TextStyle(
                       color: Color(0xFF64748B),
                       fontSize: 11.5,
@@ -133,61 +80,6 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
           ],
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: () async {
-                final res = await controller.syncFromSupabase();
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(res.message),
-                    backgroundColor: res.success
-                        ? AppTheme.availableGreen
-                        : AppTheme.warningAmber,
-                  ),
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: (SupabaseConfig.isConfigured
-                          ? AppTheme.availableGreen
-                          : AppTheme.primaryBlue)
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      SupabaseConfig.isConfigured
-                          ? Icons.cloud_sync_rounded
-                          : Icons.bolt_rounded,
-                      size: 14,
-                      color: SupabaseConfig.isConfigured
-                          ? AppTheme.availableGreen
-                          : AppTheme.primaryBlue,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      SupabaseConfig.isConfigured
-                          ? 'Supabase Live'
-                          : 'Realtime Store',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: SupabaseConfig.isConfigured
-                            ? AppTheme.availableGreen
-                            : AppTheme.primaryBlue,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
           PopupMenuButton<String>(
             key: const Key('actor-switcher-menu'),
             tooltip: 'Switch Actor / Test RBAC Role',
