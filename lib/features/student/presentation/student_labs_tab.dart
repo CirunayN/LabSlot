@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/models/labslot_models.dart';
 import '../../../core/providers/labslot_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -7,10 +8,7 @@ import '../../../core/theme/app_theme.dart';
 class StudentLabsTab extends ConsumerWidget {
   final VoidCallback onBookedNavigateToPass;
 
-  const StudentLabsTab({
-    super.key,
-    required this.onBookedNavigateToPass,
-  });
+  const StudentLabsTab({super.key, required this.onBookedNavigateToPass});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -222,7 +220,10 @@ class StudentLabsTab extends ConsumerWidget {
                       for (final tag in LabSlotController.allSoftwareTags)
                         FilterChip(
                           key: Key('filter-chip-$tag'),
-                          label: Text(tag, style: const TextStyle(fontSize: 12)),
+                          label: Text(
+                            tag,
+                            style: const TextStyle(fontSize: 12),
+                          ),
                           selected: state.selectedSoftwareFilters.contains(tag),
                           onSelected: (_) =>
                               controller.toggleSoftwareFilter(tag),
@@ -254,30 +255,25 @@ class StudentLabsTab extends ConsumerWidget {
           const SizedBox(height: 18),
 
           // Section 3: Interactive Visual PC Station Grid
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '3. ${selectedRoom.name} — Interactive Workstation Grid',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      '${selectedRoom.currentSubjectNote} • $availableCount available out of ${allRoomStations.length} stations',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: Color(0xFF475569),
-                      ),
-                    ),
-                  ],
+              Text(
+                '3. ${selectedRoom.name} — Interactive Workstation Grid',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+              const SizedBox(height: 2),
+              Text(
+                '${selectedRoom.currentSubjectNote} • $availableCount available out of ${allRoomStations.length} stations',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: Color(0xFF475569),
+                ),
+              ),
+              const SizedBox(height: 8),
               _buildLegendRow(),
             ],
           ),
@@ -290,6 +286,7 @@ class StudentLabsTab extends ConsumerWidget {
                 child: Center(
                   child: Text(
                     'No PC stations match the selected coursework software / RAM filters.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF64748B)),
                   ),
                 ),
@@ -299,11 +296,11 @@ class StudentLabsTab extends ConsumerWidget {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 235,
-                mainAxisExtent: 155,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
+                mainAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 174 : 158,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
               ),
               itemCount: filteredStations.length,
               itemBuilder: (context, index) {
@@ -311,12 +308,8 @@ class StudentLabsTab extends ConsumerWidget {
                 return _PcStationCard(
                   station: pc,
                   room: selectedRoom,
-                  onTapBook: () => _showBookingOrDefectModal(
-                    context,
-                    ref,
-                    selectedRoom,
-                    pc,
-                  ),
+                  onTapBook: () =>
+                      _showBookingOrDefectModal(context, ref, selectedRoom, pc),
                 );
               },
             ),
@@ -403,12 +396,13 @@ class StudentLabsTab extends ConsumerWidget {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            return Padding(
+            final isPhone = MediaQuery.sizeOf(ctx).width < 520;
+            return SingleChildScrollView(
               padding: EdgeInsets.only(
-                left: 22,
-                right: 22,
-                top: 22,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 22,
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
               ),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
@@ -419,13 +413,17 @@ class StudentLabsTab extends ConsumerWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          '${room.code} • ${station.stationNumber}',
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
+                        Expanded(
+                          child: Text(
+                            '${room.code} • ${station.stationNumber}',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Chip(
                           label: Text(
                             station.status.label,
@@ -482,65 +480,106 @@ class StudentLabsTab extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<int>(
-                              initialValue: selectedDuration,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Slot Duration',
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 1,
-                                  child: Text(
-                                    '1 Hour Slot',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                DropdownMenuItem(
-                                  value: 2,
-                                  child: Text(
-                                    '2 Hours Slot (Max)',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                              onChanged: (v) {
-                                if (v != null) {
-                                  setModalState(() => selectedDuration = v);
-                                }
-                              },
-                            ),
+                      if (isPhone) ...[
+                        DropdownButtonFormField<int>(
+                          initialValue: selectedDuration,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Slot Duration',
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: selectedCoursework,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Primary Coursework Tool',
-                              ),
-                              items: [
-                                for (final sw in station.installedSoftware)
+                          items: const [
+                            DropdownMenuItem(
+                              value: 1,
+                              child: Text('1 Hour Slot'),
+                            ),
+                            DropdownMenuItem(
+                              value: 2,
+                              child: Text('2 Hours Slot (Max)'),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) {
+                              setModalState(() => selectedDuration = v);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedCoursework,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Primary Coursework Tool',
+                          ),
+                          items: [
+                            for (final sw in station.installedSoftware)
+                              DropdownMenuItem(value: sw, child: Text(sw)),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) {
+                              setModalState(() => selectedCoursework = v);
+                            }
+                          },
+                        ),
+                      ] else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<int>(
+                                initialValue: selectedDuration,
+                                isExpanded: true,
+                                decoration: const InputDecoration(
+                                  labelText: 'Slot Duration',
+                                ),
+                                items: const [
                                   DropdownMenuItem(
-                                    value: sw,
+                                    value: 1,
                                     child: Text(
-                                      sw,
+                                      '1 Hour Slot',
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                              ],
-                              onChanged: (v) {
-                                if (v != null) {
-                                  setModalState(() => selectedCoursework = v);
-                                }
-                              },
+                                  DropdownMenuItem(
+                                    value: 2,
+                                    child: Text(
+                                      '2 Hours Slot (Max)',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (v) {
+                                  if (v != null) {
+                                    setModalState(() => selectedDuration = v);
+                                  }
+                                },
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: selectedCoursework,
+                                isExpanded: true,
+                                decoration: const InputDecoration(
+                                  labelText: 'Primary Coursework Tool',
+                                ),
+                                items: [
+                                  for (final sw in station.installedSoftware)
+                                    DropdownMenuItem(
+                                      value: sw,
+                                      child: Text(
+                                        sw,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (v) {
+                                  if (v != null) {
+                                    setModalState(() => selectedCoursework = v);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
@@ -631,11 +670,12 @@ class StudentLabsTab extends ConsumerWidget {
           builder: (ctx, setDialogState) {
             return AlertDialog(
               title: Text('Report Defective PC (${station.stationNumber})'),
-              content: SizedBox(
-                width: 420,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+              content: SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                     DropdownButtonFormField<String>(
                       initialValue: selectedCategory,
                       isExpanded: true,
@@ -686,12 +726,12 @@ class StudentLabsTab extends ConsumerWidget {
                       autofillHints: const [],
                       decoration: const InputDecoration(
                         labelText: 'Issue Description',
-                        hintText:
-                            'Describe the broken hardware or missing coursework software...',
+                        hintText: 'Describe the broken hardware or missing coursework software...',
                       ),
                     ),
                   ],
                 ),
+              ),
               ),
               actions: [
                 TextButton(
@@ -786,8 +826,11 @@ class _PcStationCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.desktop_windows_rounded,
-                        size: 16, color: borderColor),
+                    Icon(
+                      Icons.desktop_windows_rounded,
+                      size: 16,
+                      color: borderColor,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       station.stationNumber,
@@ -801,8 +844,10 @@ class _PcStationCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: badgeBg,
                       borderRadius: BorderRadius.circular(5),

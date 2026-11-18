@@ -18,9 +18,10 @@ class StudentBookingPassTab extends ConsumerWidget {
         .where((b) => b.studentId == state.currentUser?.id)
         .toList();
     final timeFormat = DateFormat('h:mm a');
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isPhone ? 14 : 20),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
@@ -35,7 +36,7 @@ class StudentBookingPassTab extends ConsumerWidget {
               if (activeBooking == null)
                 const Card(
                   child: Padding(
-                    padding: EdgeInsets.all(32),
+                    padding: EdgeInsets.all(28),
                     child: Center(
                       child: Column(
                         children: [
@@ -66,11 +67,15 @@ class StudentBookingPassTab extends ConsumerWidget {
               else
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(isPhone ? 16 : 24),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,6 +87,7 @@ class StudentBookingPassTab extends ConsumerWidget {
                                     fontSize: 15,
                                   ),
                                 ),
+                                const SizedBox(height: 2),
                                 Text(
                                   'Workstation ${activeBooking.stationNumber} • Coursework: ${activeBooking.courseworkTag}',
                                   style: const TextStyle(
@@ -93,8 +99,8 @@ class StudentBookingPassTab extends ConsumerWidget {
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
+                                horizontal: 10,
+                                vertical: 5,
                               ),
                               decoration: BoxDecoration(
                                 color: activeBooking.status ==
@@ -118,57 +124,59 @@ class StudentBookingPassTab extends ConsumerWidget {
                           ],
                         ),
                         const Divider(height: 28),
-                        Wrap(
-                          spacing: 28,
-                          runSpacing: 20,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFFCBD5E1),
+                        Center(
+                          child: Wrap(
+                            spacing: 28,
+                            runSpacing: 20,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            alignment: WrapAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xFFCBD5E1),
+                                  ),
+                                ),
+                                child: QrImageView(
+                                  data: activeBooking.qrAuthCode,
+                                  size: isPhone ? 136 : 150,
                                 ),
                               ),
-                              child: QrImageView(
-                                data: activeBooking.qrAuthCode,
-                                size: 150,
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 340),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _passDetailRow(
+                                      'Booking Reference Code',
+                                      activeBooking.qrAuthCode,
+                                    ),
+                                    _passDetailRow(
+                                      'Student Name & ID',
+                                      '${activeBooking.studentName} (${activeBooking.studentIdNumber})',
+                                    ),
+                                    _passDetailRow(
+                                      'Reserved Slot Window',
+                                      '${timeFormat.format(activeBooking.scheduledStart)} – ${timeFormat.format(activeBooking.scheduledEnd)} (${activeBooking.durationHours} hr)',
+                                    ),
+                                    _passDetailRow(
+                                      activeBooking.status ==
+                                              BookingStatus.checkedIn
+                                          ? 'Physical School ID Vault'
+                                          : '10-Min Check-In Grace Deadline',
+                                      activeBooking.status ==
+                                              BookingStatus.checkedIn
+                                          ? 'Held in Custodian ${activeBooking.idBinLocation ?? "Tray"}'
+                                          : 'Must check in by ${timeFormat.format(activeBooking.gracePeriodDeadline)}',
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            SizedBox(
-                              width: 340,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _passDetailRow(
-                                    'Booking Reference Code',
-                                    activeBooking.qrAuthCode,
-                                  ),
-                                  _passDetailRow(
-                                    'Student Name & ID',
-                                    '${activeBooking.studentName} (${activeBooking.studentIdNumber})',
-                                  ),
-                                  _passDetailRow(
-                                    'Reserved Slot Window',
-                                    '${timeFormat.format(activeBooking.scheduledStart)} – ${timeFormat.format(activeBooking.scheduledEnd)} (${activeBooking.durationHours} hr)',
-                                  ),
-                                  _passDetailRow(
-                                    activeBooking.status ==
-                                            BookingStatus.checkedIn
-                                        ? 'Physical School ID Vault'
-                                        : '10-Min Check-In Grace Deadline',
-                                    activeBooking.status ==
-                                            BookingStatus.checkedIn
-                                        ? 'Held in Custodian ${activeBooking.idBinLocation ?? "Tray"}'
-                                        : 'Must check in by ${timeFormat.format(activeBooking.gracePeriodDeadline)}',
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         if (activeBooking.status == BookingStatus.reserved) ...[
                           const Divider(height: 28),
@@ -187,7 +195,7 @@ class StudentBookingPassTab extends ConsumerWidget {
                                   );
                                 },
                                 icon: const Icon(Icons.cancel_outlined),
-                                label: const Text('Cancel Pending Reservation'),
+                                label: const Text('Cancel Reservation'),
                               ),
                               ElevatedButton.icon(
                                 key: const Key('simulate-grace-expiry-button'),
@@ -205,7 +213,7 @@ class StudentBookingPassTab extends ConsumerWidget {
                                 },
                                 icon: const Icon(Icons.timer_off_outlined),
                                 label: const Text(
-                                  'Simulate 10-Min Grace Expiry (+1 Strike)',
+                                  'Simulate Grace Expiry (+1 Strike)',
                                 ),
                               ),
                             ],
@@ -275,9 +283,9 @@ class _StudentHelpDeskChatTabState
   final _msgController = TextEditingController();
 
   static const List<String> _quickPrompts = [
-    'Need Admin password to launch Android Emulator',
-    'Mouse left-click is sticking on my station',
-    'May I request a 15-minute slot extension?',
+    'Need Admin access for Emulator',
+    'Mouse click sticking on my PC',
+    'Request 15-min slot extension',
   ];
 
   @override
@@ -306,20 +314,21 @@ class _StudentHelpDeskChatTabState
     final messages = state.chatMessages
         .where((m) => m.studentId == currentUser?.id)
         .toList();
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return Padding(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(isPhone ? 12 : 18),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
           child: Card(
             child: Padding(
-              padding: const EdgeInsets.all(18),
+              padding: EdgeInsets.all(isPhone ? 14 : 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Relay Session Help Desk Messages (Custodian Support)',
+                    'Help Desk Support Chat',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
@@ -342,12 +351,13 @@ class _StudentHelpDeskChatTabState
                         ),
                     ],
                   ),
-                  const Divider(height: 22),
+                  const Divider(height: 20),
                   Expanded(
                     child: messages.isEmpty
                         ? const Center(
                             child: Text(
                               'No help desk messages yet. Tap a quick prompt above or type a message below.',
+                              textAlign: TextAlign.center,
                               style: TextStyle(color: Color(0xFF64748B)),
                             ),
                           )
@@ -412,12 +422,12 @@ class _StudentHelpDeskChatTabState
                           decoration: const InputDecoration(
                             labelText: 'Help Desk Message',
                             hintText:
-                                'Type your message to the Laboratory Custodian...',
+                                'Message the Laboratory Custodian...',
                           ),
                           onSubmitted: _sendMessage,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       ElevatedButton.icon(
                         key: const Key('student-chat-send-button'),
                         onPressed: () => _sendMessage(_msgController.text),
@@ -435,4 +445,3 @@ class _StudentHelpDeskChatTabState
     );
   }
 }
-
