@@ -487,17 +487,24 @@ class StudentLabsTab extends ConsumerWidget {
                           Expanded(
                             child: DropdownButtonFormField<int>(
                               initialValue: selectedDuration,
+                              isExpanded: true,
                               decoration: const InputDecoration(
                                 labelText: 'Slot Duration',
                               ),
                               items: const [
                                 DropdownMenuItem(
                                   value: 1,
-                                  child: Text('1 Hour Slot'),
+                                  child: Text(
+                                    '1 Hour Slot',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 2,
-                                  child: Text('2 Hours Slot (Max)'),
+                                  child: Text(
+                                    '2 Hours Slot (Max)',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ],
                               onChanged: (v) {
@@ -511,12 +518,19 @@ class StudentLabsTab extends ConsumerWidget {
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               initialValue: selectedCoursework,
+                              isExpanded: true,
                               decoration: const InputDecoration(
                                 labelText: 'Primary Coursework Tool',
                               ),
                               items: [
                                 for (final sw in station.installedSoftware)
-                                  DropdownMenuItem(value: sw, child: Text(sw)),
+                                  DropdownMenuItem(
+                                    value: sw,
+                                    child: Text(
+                                      sw,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
                               ],
                               onChanged: (v) {
                                 if (v != null) {
@@ -624,25 +638,38 @@ class StudentLabsTab extends ConsumerWidget {
                   children: [
                     DropdownButtonFormField<String>(
                       initialValue: selectedCategory,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Hardware / Software Issue Category',
                       ),
                       items: const [
                         DropdownMenuItem(
                           value: 'Broken Mouse / Peripheral',
-                          child: Text('Broken Mouse / Keyboard Peripheral'),
+                          child: Text(
+                            'Broken Mouse / Keyboard Peripheral',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         DropdownMenuItem(
                           value: 'No Network / Internet',
-                          child: Text('No Network / Internet Connection'),
+                          child: Text(
+                            'No Network / Internet Connection',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         DropdownMenuItem(
                           value: 'Missing Required IDE / Software',
-                          child: Text('Missing Required Coursework IDE'),
+                          child: Text(
+                            'Missing Required Coursework IDE',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         DropdownMenuItem(
                           value: 'Monitor / Boot Failure',
-                          child: Text('Monitor Blank / System Boot Failure'),
+                          child: Text(
+                            'Monitor Blank / System Boot Failure',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                       onChanged: (v) {
@@ -656,10 +683,11 @@ class StudentLabsTab extends ConsumerWidget {
                       key: const Key('defect-description-field'),
                       controller: notesController,
                       maxLines: 3,
+                      autofillHints: const [],
                       decoration: const InputDecoration(
                         labelText: 'Issue Description',
                         hintText:
-                            'Describe the broken hardware or missing tool...',
+                            'Describe the broken hardware or missing coursework software...',
                       ),
                     ),
                   ],

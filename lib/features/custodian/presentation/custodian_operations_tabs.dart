@@ -242,9 +242,7 @@ class CustodianRoomsAndMaintenanceTab extends ConsumerWidget {
     WidgetRef ref,
     MaintenanceTicket ticket,
   ) {
-    final repairController = TextEditingController(
-      text: 'Replaced faulty peripheral and verified station health.',
-    );
+    final repairController = TextEditingController();
 
     showDialog(
       context: context,
@@ -256,8 +254,11 @@ class CustodianRoomsAndMaintenanceTab extends ConsumerWidget {
             key: const Key('repair-notes-field'),
             controller: repairController,
             maxLines: 3,
+            autofillHints: const [],
             decoration: const InputDecoration(
               labelText: 'Technician Repair Notes',
+              hintText:
+                  'Describe the repair or replacement done before restoring this PC...',
             ),
           ),
         ),
@@ -396,9 +397,11 @@ class _CustodianHelpDeskInboxTabState
                           child: TextField(
                             key: const Key('custodian-chat-reply-field'),
                             controller: _replyController,
+                            autofillHints: const [],
                             decoration: InputDecoration(
+                              labelText: 'Help Desk Reply',
                               hintText:
-                                  'Reply to ${messages.last.studentName} (${messages.last.stationNumber})...',
+                                  'Type your response to ${messages.last.studentName} (${messages.last.stationNumber})...',
                             ),
                             onSubmitted: (_) => _sendReply(messages.last),
                           ),

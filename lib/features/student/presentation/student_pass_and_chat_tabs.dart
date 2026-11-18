@@ -408,9 +408,11 @@ class _StudentHelpDeskChatTabState
                         child: TextField(
                           key: const Key('student-chat-input'),
                           controller: _msgController,
+                          autofillHints: const [],
                           decoration: const InputDecoration(
+                            labelText: 'Help Desk Message',
                             hintText:
-                                'Message the Laboratory Custodian...',
+                                'Type your message to the Laboratory Custodian...',
                           ),
                           onSubmitted: _sendMessage,
                         ),

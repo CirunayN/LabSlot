@@ -52,10 +52,12 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                     child: TextField(
                       key: const Key('custodian-qr-search-field'),
                       controller: _searchCodeController,
+                      autofillHints: const [],
                       decoration: const InputDecoration(
                         labelText:
-                            'Verify Booking Pass Code / Student Name / PC Number',
-                        hintText: 'e.g., LS-4092-PC05 or Marco Santos',
+                            'Search Pending Check-In Queue',
+                        hintText:
+                            'Enter QR pass code, student name, or PC number (e.g., LS-4092-PC05)',
                         prefixIcon: Icon(Icons.qr_code_scanner_rounded),
                       ),
                       onChanged: (v) => setState(() => _searchQuery = v.trim()),
@@ -334,6 +336,7 @@ class _PendingCheckInCardState extends ConsumerState<_PendingCheckInCard> {
                   width: 145,
                   child: DropdownButtonFormField<String>(
                     initialValue: _selectedBin,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'ID Tray Bin',
                     ),

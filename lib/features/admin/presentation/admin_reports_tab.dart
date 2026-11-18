@@ -245,6 +245,7 @@ class _AdminAccreditationReportsTabState
                         width: 240,
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedRoomFilter,
+                          isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Laboratory Scope',
                           ),

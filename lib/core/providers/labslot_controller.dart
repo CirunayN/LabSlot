@@ -1460,6 +1460,11 @@ class LabSlotController extends Notifier<LabSlotState> {
     if (cleanNumber.isEmpty) {
       return const ActionResult.err('PC station identifier is required.');
     }
+    if (cpu.trim().isEmpty || gpu.trim().isEmpty) {
+      return const ActionResult.err(
+        'Please specify both CPU and GPU workstation specifications.',
+      );
+    }
     if (installedSoftware.isEmpty) {
       return const ActionResult.err(
         'Please assign at least one coursework software tag.',

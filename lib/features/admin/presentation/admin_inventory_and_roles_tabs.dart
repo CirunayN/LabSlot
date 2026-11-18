@@ -14,16 +14,12 @@ class AdminInventoryTab extends ConsumerStatefulWidget {
 class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
   final _roomCodeController = TextEditingController();
   final _roomNameController = TextEditingController();
-  final _roomFloorController = TextEditingController(
-    text: '4th Floor, IT Building',
-  );
-  final _roomCapacityController = TextEditingController(text: '10');
+  final _roomFloorController = TextEditingController();
+  final _roomCapacityController = TextEditingController();
 
-  final _pcNumberController = TextEditingController(text: 'PC-13');
-  final _pcCpuController = TextEditingController(text: 'Intel Core i7-13700');
-  final _pcGpuController = TextEditingController(
-    text: 'NVIDIA RTX 3060 12GB',
-  );
+  final _pcNumberController = TextEditingController();
+  final _pcCpuController = TextEditingController();
+  final _pcGpuController = TextEditingController();
   int _selectedRamGb = 32;
   final Set<String> _selectedSoftware = {'Flutter', 'Android Studio', 'VS Code'};
 
@@ -77,8 +73,10 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                               child: TextField(
                                 key: const Key('admin-room-code-field'),
                                 controller: _roomCodeController,
+                                autofillHints: const [],
                                 decoration: const InputDecoration(
-                                  labelText: 'Room Code (e.g., COMLAB-5)',
+                                  labelText: 'Room Code',
+                                  hintText: 'e.g., COMLAB-5',
                                 ),
                               ),
                             ),
@@ -89,8 +87,10 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                                 key: const Key('admin-room-capacity-field'),
                                 controller: _roomCapacityController,
                                 keyboardType: TextInputType.number,
+                                autofillHints: const [],
                                 decoration: const InputDecoration(
                                   labelText: 'PC Capacity',
+                                  hintText: '1–60 (e.g., 10)',
                                 ),
                               ),
                             ),
@@ -100,16 +100,21 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                         TextField(
                           key: const Key('admin-room-name-field'),
                           controller: _roomNameController,
+                          autofillHints: const [],
                           decoration: const InputDecoration(
-                            labelText:
-                                'Room Title (e.g., ComLab 5 – AI & Data Science)',
+                            labelText: 'Room Title',
+                            hintText:
+                                'Enter room name (e.g., ComLab 5 – AI & Data Science)',
                           ),
                         ),
                         const SizedBox(height: 10),
                         TextField(
                           controller: _roomFloorController,
+                          autofillHints: const [],
                           decoration: const InputDecoration(
                             labelText: 'Building & Floor Location',
+                            hintText:
+                                'Enter floor & building (e.g., 4th Floor, IT Building)',
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -139,6 +144,8 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                               if (res.success) {
                                 _roomCodeController.clear();
                                 _roomNameController.clear();
+                                _roomFloorController.clear();
+                                _roomCapacityController.clear();
                               }
                             },
                             icon: const Icon(Icons.add_business_rounded),
@@ -175,6 +182,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                             Expanded(
                               child: DropdownButtonFormField<String>(
                                 initialValue: selectedRoom.id,
+                                isExpanded: true,
                                 decoration: const InputDecoration(
                                   labelText: 'Target Laboratory',
                                 ),
@@ -182,7 +190,10 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                                   for (final r in state.rooms)
                                     DropdownMenuItem(
                                       value: r.id,
-                                      child: Text(r.code),
+                                      child: Text(
+                                        r.code,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                 ],
                                 onChanged: (v) {
@@ -196,8 +207,10 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                               child: TextField(
                                 key: const Key('admin-pc-number-field'),
                                 controller: _pcNumberController,
+                                autofillHints: const [],
                                 decoration: const InputDecoration(
                                   labelText: 'Station ID',
+                                  hintText: 'e.g., PC-13',
                                 ),
                               ),
                             ),
@@ -209,8 +222,10 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                             Expanded(
                               child: TextField(
                                 controller: _pcCpuController,
+                                autofillHints: const [],
                                 decoration: const InputDecoration(
                                   labelText: 'CPU Model',
+                                  hintText: 'e.g., Intel Core i7-13700',
                                 ),
                               ),
                             ),
@@ -219,6 +234,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                               width: 130,
                               child: DropdownButtonFormField<int>(
                                 initialValue: _selectedRamGb,
+                                isExpanded: true,
                                 decoration: const InputDecoration(
                                   labelText: 'RAM (GB)',
                                 ),
@@ -248,8 +264,10 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _pcGpuController,
+                          autofillHints: const [],
                           decoration: const InputDecoration(
                             labelText: 'GPU Specification',
+                            hintText: 'Enter GPU model (e.g., NVIDIA RTX 3060 12GB)',
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -412,9 +430,10 @@ class AdminRolesAndStrikesTab extends ConsumerWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         SizedBox(
-                          width: 205,
+                          width: 215,
                           child: DropdownButtonFormField<UserRole>(
                             initialValue: u.role,
+                            isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'RBAC Role',
                             ),
@@ -424,6 +443,7 @@ class AdminRolesAndStrikesTab extends ConsumerWidget {
                                   value: role,
                                   child: Text(
                                     role.label,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 12.5),
                                   ),
                                 ),
