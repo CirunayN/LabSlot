@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:labslot/core/models/labslot_models.dart';
@@ -185,7 +186,7 @@ void main() {
     });
   });
 
-  testWidgets('LabSlotApp boots and displays RBAC shell',
+  testWidgets('LabSlotApp boots with clean header, no Supabase Live text, and quick actor menu',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       const ProviderScope(
@@ -195,6 +196,46 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('LabSlot'), findsOneWidget);
+    expect(find.text('Marco Santos'), findsOneWidget);
+    expect(find.text('Supabase Live'), findsNothing);
+    expect(find.text('Realtime Store'), findsNothing);
+    expect(find.byKey(const Key('actor-switcher-menu')), findsOneWidget);
     expect(find.text('Live Labs & PCs'), findsOneWidget);
+
+    // Sign out to verify Login & Register screens
+    await tester.tap(find.byKey(const Key('sign-out-button')));
+    await tester.pumpAndSettle();
+
+    // Quick Actor Switcher card and Supabase Cloud text are removed on login
+    expect(find.text('Quick Actor Switcher (RBAC Testing)'), findsNothing);
+    expect(find.text('Connected to Live Supabase Cloud'), findsNothing);
+
+    // Email & Password fields start empty
+    final emailField = tester.widget<TextField>(
+      find.byKey(const Key('login-email-field')),
+    );
+    final passField = tester.widget<TextField>(
+      find.byKey(const Key('login-password-field')),
+    );
+    expect(emailField.controller?.text, isEmpty);
+    expect(passField.controller?.text, isEmpty);
+
+    // Switch to Create Account (Register) mode and verify zero overflow + empty fields
+    await tester.tap(find.text('Create Account'));
+    await tester.pumpAndSettle();
+
+    final nameField = tester.widget<TextField>(
+      find.byKey(const Key('signup-fullname-field')),
+    );
+    final idField = tester.widget<TextField>(
+      find.byKey(const Key('signup-id-field')),
+    );
+    final deptField = tester.widget<TextField>(
+      find.byKey(const Key('signup-department-field')),
+    );
+    expect(nameField.controller?.text, isEmpty);
+    expect(idField.controller?.text, isEmpty);
+    expect(deptField.controller?.text, isEmpty);
+    expect(find.byKey(const Key('signup-role-dropdown')), findsOneWidget);
   });
 }
