@@ -36,9 +36,10 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
     }).toList();
 
     final activeList = state.activeCheckedInBookings;
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isPhone ? 14 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -148,8 +149,9 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -169,7 +171,6 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 10),
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
@@ -280,8 +281,10 @@ class _PendingCheckInCardState extends ConsumerState<_PendingCheckInCard> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -301,7 +304,6 @@ class _PendingCheckInCardState extends ConsumerState<_PendingCheckInCard> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
                     Text(
                       'Grace Deadline: ${widget.timeFormat.format(b.gracePeriodDeadline)}',
                       style: const TextStyle(
@@ -329,8 +331,10 @@ class _PendingCheckInCardState extends ConsumerState<_PendingCheckInCard> {
                 ),
               ],
             ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 SizedBox(
                   width: 145,
@@ -349,7 +353,6 @@ class _PendingCheckInCardState extends ConsumerState<_PendingCheckInCard> {
                     },
                   ),
                 ),
-                const SizedBox(width: 10),
                 ElevatedButton.icon(
                   key: Key('checkin-button-${b.id}'),
                   onPressed: () {

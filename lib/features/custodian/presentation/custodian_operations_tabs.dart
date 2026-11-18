@@ -18,9 +18,10 @@ class CustodianRoomsAndMaintenanceTab extends ConsumerWidget {
     final resolvedTickets = state.maintenanceTickets
         .where((t) => t.isResolved)
         .toList();
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isPhone ? 14 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -66,45 +67,74 @@ class CustodianRoomsAndMaintenanceTab extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    SegmentedButton<RoomStatus>(
-                      segments: const [
-                        ButtonSegment(
-                          value: RoomStatus.open,
-                          label: Text('Open Lab', style: TextStyle(fontSize: 12)),
-                          icon: Icon(Icons.check_circle_outline, size: 16),
-                        ),
-                        ButtonSegment(
-                          value: RoomStatus.classInSession,
-                          label: Text(
-                            'Class in Session',
-                            style: TextStyle(fontSize: 12),
+                    if (isPhone)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final statusOption in RoomStatus.values)
+                            ChoiceChip(
+                              label: Text(statusOption.label),
+                              selected: room.status == statusOption,
+                              onSelected: (selected) {
+                                if (!selected) return;
+                                final note = statusOption == RoomStatus.open
+                                    ? 'Open Lab for Vacant Period Coding'
+                                    : statusOption == RoomStatus.classInSession
+                                        ? 'Scheduled Lecture / Make-up Class in Session'
+                                        : 'Closed for Scheduled Maintenance';
+                                final res = controller.updateRoomAvailability(
+                                  roomId: room.id,
+                                  newStatus: statusOption,
+                                  subjectNote: note,
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(res.message)),
+                                );
+                              },
+                            ),
+                        ],
+                      )
+                    else
+                      SegmentedButton<RoomStatus>(
+                        segments: const [
+                          ButtonSegment(
+                            value: RoomStatus.open,
+                            label: Text('Open Lab', style: TextStyle(fontSize: 12)),
+                            icon: Icon(Icons.check_circle_outline, size: 16),
                           ),
-                          icon: Icon(Icons.school_outlined, size: 16),
-                        ),
-                        ButtonSegment(
-                          value: RoomStatus.closed,
-                          label: Text('Closed', style: TextStyle(fontSize: 12)),
-                          icon: Icon(Icons.lock_outline, size: 16),
-                        ),
-                      ],
-                      selected: {room.status},
-                      onSelectionChanged: (selection) {
-                        final chosen = selection.first;
-                        final note = chosen == RoomStatus.open
-                            ? 'Open Lab for Vacant Period Coding'
-                            : chosen == RoomStatus.classInSession
-                                ? 'Scheduled Lecture / Make-up Class in Session'
-                                : 'Closed for Scheduled Maintenance';
-                        final res = controller.updateRoomAvailability(
-                          roomId: room.id,
-                          newStatus: chosen,
-                          subjectNote: note,
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(res.message)),
-                        );
-                      },
-                    ),
+                          ButtonSegment(
+                            value: RoomStatus.classInSession,
+                            label: Text(
+                              'Class in Session',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            icon: Icon(Icons.school_outlined, size: 16),
+                          ),
+                          ButtonSegment(
+                            value: RoomStatus.closed,
+                            label: Text('Closed', style: TextStyle(fontSize: 12)),
+                            icon: Icon(Icons.lock_outline, size: 16),
+                          ),
+                        ],
+                        selected: {room.status},
+                        onSelectionChanged: (selection) {
+                          final chosen = selection.first;
+                          final note = chosen == RoomStatus.open
+                              ? 'Open Lab for Vacant Period Coding'
+                              : chosen == RoomStatus.classInSession
+                                  ? 'Scheduled Lecture / Make-up Class in Session'
+                                  : 'Closed for Scheduled Maintenance';
+                          final res = controller.updateRoomAvailability(
+                            roomId: room.id,
+                            newStatus: chosen,
+                            subjectNote: note,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(res.message)),
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -145,8 +175,11 @@ class CustodianRoomsAndMaintenanceTab extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             '${ticket.roomName} • ${ticket.stationNumber}',
@@ -248,17 +281,19 @@ class CustodianRoomsAndMaintenanceTab extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Restore ${ticket.stationNumber} to Available'),
-        content: SizedBox(
-          width: 400,
-          child: TextField(
-            key: const Key('repair-notes-field'),
-            controller: repairController,
-            maxLines: 3,
-            autofillHints: const [],
-            decoration: const InputDecoration(
-              labelText: 'Technician Repair Notes',
-              hintText:
-                  'Describe the repair or replacement done before restoring this PC...',
+        content: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: TextField(
+              key: const Key('repair-notes-field'),
+              controller: repairController,
+              maxLines: 3,
+              autofillHints: const [],
+              decoration: const InputDecoration(
+                labelText: 'Technician Repair Notes',
+                hintText:
+                    'Describe the repair or replacement done before restoring this PC...',
+              ),
             ),
           ),
         ),
@@ -327,15 +362,16 @@ class _CustodianHelpDeskInboxTabState
   Widget build(BuildContext context) {
     final state = ref.watch(labSlotProvider);
     final messages = state.chatMessages;
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
 
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isPhone ? 12 : 20),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
           child: Card(
             child: Padding(
-              padding: const EdgeInsets.all(18),
+              padding: EdgeInsets.all(isPhone ? 14 : 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -406,12 +442,12 @@ class _CustodianHelpDeskInboxTabState
                             onSubmitted: (_) => _sendReply(messages.last),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         ElevatedButton.icon(
                           key: const Key('custodian-chat-reply-button'),
                           onPressed: () => _sendReply(messages.last),
                           icon: const Icon(Icons.reply_rounded, size: 18),
-                          label: const Text('Send Reply'),
+                          label: Text(isPhone ? 'Reply' : 'Send Reply'),
                         ),
                       ],
                     ),
