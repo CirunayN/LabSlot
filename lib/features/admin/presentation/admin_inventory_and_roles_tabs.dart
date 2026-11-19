@@ -79,7 +79,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                                 autofillHints: const [],
                                 decoration: const InputDecoration(
                                   labelText: 'Room Code',
-                                  hintText: 'e.g., COMLAB-5',
+                                  hintText: 'e.g., COMLAB-1',
                                 ),
                               ),
                             ),
@@ -93,7 +93,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                                 autofillHints: const [],
                                 decoration: const InputDecoration(
                                   labelText: 'PC Capacity',
-                                  hintText: '1–60 (e.g., 10)',
+                                  hintText: '1-60 (e.g., 12)',
                                 ),
                               ),
                             ),
@@ -107,7 +107,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                           decoration: const InputDecoration(
                             labelText: 'Room Title',
                             hintText:
-                                'Enter room name (e.g., ComLab 5 – AI & Data Science)',
+                                'Enter room name (e.g., ComLab 1 - Programming Lab)',
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -115,9 +115,9 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                           controller: _roomFloorController,
                           autofillHints: const [],
                           decoration: const InputDecoration(
-                            labelText: 'Building & Floor Location',
+                            labelText: 'Building Location',
                             hintText:
-                                'Enter floor & building (e.g., 4th Floor, IT Building)',
+                                'Enter floor and building (e.g., 3rd Floor, IT Building)',
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -152,9 +152,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                               }
                             },
                             icon: const Icon(Icons.add_business_rounded),
-                            label: const Text(
-                              'Validate Capacity & Create Laboratory Room',
-                            ),
+                            label: const Text('Create Laboratory Room'),
                           ),
                         ),
                       ],
@@ -163,7 +161,7 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                 ),
               ),
 
-              // Card 2: Configure PC Hardware Specs & Software Tags
+              // Card 2: PC Inventory
               ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth: isPhone ? double.infinity : 480,
@@ -175,159 +173,175 @@ class _AdminInventoryTabState extends ConsumerState<AdminInventoryTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '2. Configure PC Station Hardware & Software Tags',
+                          '2. PC Inventory',
                           style: TextStyle(
                             fontSize: 15.5,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                initialValue: selectedRoom.id,
-                                isExpanded: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Target Laboratory',
-                                ),
-                                items: [
-                                  for (final r in state.rooms)
-                                    DropdownMenuItem(
-                                      value: r.id,
-                                      child: Text(
-                                        r.code,
-                                        overflow: TextOverflow.ellipsis,
+                        if (selectedRoom == null)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              'Create a laboratory room first before configuring PC stations.',
+                              style: TextStyle(color: Color(0xFF64748B)),
+                            ),
+                          )
+                        else ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey('inv-room-${selectedRoom.id}'),
+                                  initialValue: selectedRoom.id,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Target Laboratory',
+                                  ),
+                                  items: [
+                                    for (final r in state.rooms)
+                                      DropdownMenuItem(
+                                        value: r.id,
+                                        child: Text(
+                                          r.code,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
+                                  ],
+                                  onChanged: (v) {
+                                    if (v != null) controller.selectRoom(v);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 130,
+                                child: TextField(
+                                  key: const Key('admin-pc-number-field'),
+                                  controller: _pcNumberController,
+                                  autofillHints: const [],
+                                  decoration: const InputDecoration(
+                                    labelText: 'Station ID',
+                                    hintText: 'e.g., PC-13',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _pcCpuController,
+                                  autofillHints: const [],
+                                  decoration: const InputDecoration(
+                                    labelText: 'CPU Model',
+                                    hintText: 'e.g., Intel Core i7-13700',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 130,
+                                child: DropdownButtonFormField<int>(
+                                  initialValue: _selectedRamGb,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'RAM (GB)',
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 16,
+                                      child: Text('16 GB'),
                                     ),
-                                ],
-                                onChanged: (v) {
-                                  if (v != null) controller.selectRoom(v);
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            SizedBox(
-                              width: 130,
-                              child: TextField(
-                                key: const Key('admin-pc-number-field'),
-                                controller: _pcNumberController,
-                                autofillHints: const [],
-                                decoration: const InputDecoration(
-                                  labelText: 'Station ID',
-                                  hintText: 'e.g., PC-13',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _pcCpuController,
-                                autofillHints: const [],
-                                decoration: const InputDecoration(
-                                  labelText: 'CPU Model',
-                                  hintText: 'e.g., Intel Core i7-13700',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            SizedBox(
-                              width: 130,
-                              child: DropdownButtonFormField<int>(
-                                initialValue: _selectedRamGb,
-                                isExpanded: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'RAM (GB)',
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: 16,
-                                    child: Text('16 GB'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 32,
-                                    child: Text('32 GB'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 64,
-                                    child: Text('64 GB'),
-                                  ),
-                                ],
-                                onChanged: (v) {
-                                  if (v != null) {
-                                    setState(() => _selectedRamGb = v);
-                                  }
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _pcGpuController,
-                          autofillHints: const [],
-                          decoration: const InputDecoration(
-                            labelText: 'GPU Specification',
-                            hintText: 'Enter GPU model (e.g., NVIDIA RTX 3060 12GB)',
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (final tag in LabSlotController.allSoftwareTags)
-                              FilterChip(
-                                label: Text(
-                                  tag,
-                                  style: const TextStyle(fontSize: 11.5),
-                                ),
-                                selected: _selectedSoftware.contains(tag),
-                                onSelected: (selected) {
-                                  setState(() {
-                                    if (selected) {
-                                      _selectedSoftware.add(tag);
-                                    } else {
-                                      _selectedSoftware.remove(tag);
+                                    DropdownMenuItem(
+                                      value: 32,
+                                      child: Text('32 GB'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 64,
+                                      child: Text('64 GB'),
+                                    ),
+                                  ],
+                                  onChanged: (v) {
+                                    if (v != null) {
+                                      setState(() => _selectedRamGb = v);
                                     }
-                                  });
-                                },
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            key: const Key('admin-save-pc-button'),
-                            onPressed: () {
-                              final res = controller.addOrUpdatePcStation(
-                                roomId: selectedRoom.id,
-                                stationNumber: _pcNumberController.text,
-                                cpu: _pcCpuController.text,
-                                ramGb: _selectedRamGb,
-                                gpu: _pcGpuController.text,
-                                installedSoftware: _selectedSoftware.toList(),
-                              );
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(res.message),
-                                  backgroundColor: res.success
-                                      ? AppTheme.availableGreen
-                                      : AppTheme.reservedRed,
+                                  },
                                 ),
-                              );
-                            },
-                            icon: const Icon(Icons.save_rounded),
-                            label: const Text(
-                              'Save / Update Workstation Specs & Tags',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _pcGpuController,
+                            autofillHints: const [],
+                            decoration: const InputDecoration(
+                              labelText: 'GPU Specification',
+                              hintText:
+                                  'Enter GPU model (e.g., NVIDIA RTX 3060 12GB)',
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final tag
+                                  in LabSlotController.allSoftwareTags)
+                                FilterChip(
+                                  label: Text(
+                                    tag,
+                                    style: const TextStyle(fontSize: 11.5),
+                                  ),
+                                  selected: _selectedSoftware.contains(tag),
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _selectedSoftware.add(tag);
+                                      } else {
+                                        _selectedSoftware.remove(tag);
+                                      }
+                                    });
+                                  },
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              key: const Key('admin-save-pc-button'),
+                              onPressed: () {
+                                final res = controller.addOrUpdatePcStation(
+                                  roomId: selectedRoom.id,
+                                  stationNumber: _pcNumberController.text,
+                                  cpu: _pcCpuController.text,
+                                  ramGb: _selectedRamGb,
+                                  gpu: _pcGpuController.text,
+                                  installedSoftware: _selectedSoftware.toList(),
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(res.message),
+                                    backgroundColor: res.success
+                                        ? AppTheme.availableGreen
+                                        : AppTheme.reservedRed,
+                                  ),
+                                );
+                                if (res.success) {
+                                  _pcNumberController.clear();
+                                  _pcCpuController.clear();
+                                  _pcGpuController.clear();
+                                }
+                              },
+                              icon: const Icon(Icons.save_rounded),
+                              label: const Text('Save Workstation Specs'),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -356,152 +370,173 @@ class AdminRolesAndStrikesTab extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Manage User Roles (RBAC) & Fair-Use 3-Strike Suspensions',
+            'User Management',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
           const Text(
-            'Assign system roles (Student, Laboratory Custodian, System Administrator) and enforce or reset 3-strike no-show booking suspensions.',
+            'Assign system roles (Student, Laboratory Custodian, System Administrator) and manage 3-strike no-show booking suspensions.',
             style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 14),
 
-          for (final u in state.users)
-            Card(
-              margin: const EdgeInsets.only(bottom: 10),
+          if (state.users.isEmpty)
+            const Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Wrap(
-                  spacing: 16,
-                  runSpacing: 12,
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              u.fullName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text(
+                    'No registered user accounts found.',
+                    style: TextStyle(color: Color(0xFF64748B)),
+                  ),
+                ),
+              ),
+            )
+          else
+            for (final u in state.users)
+              Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 12,
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                u.fullName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                ),
                               ),
-                            ),
-                            if (u.isSuspended)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.reservedBg,
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                                child: const Text(
-                                  'SUSPENDED (3+ Strikes)',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppTheme.reservedRed,
+                              if (u.isSuspended)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
                                   ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        Text(
-                          '${u.email} • ID: ${u.studentIdNumber} • ${u.courseDepartment}',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: Color(0xFF475569),
-                          ),
-                        ),
-                        Text(
-                          'No-Show Strikes: ${u.strikeCount} / 3',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: u.isSuspended
-                                ? AppTheme.reservedRed
-                                : AppTheme.availableGreen,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Wrap(
-                      spacing: 10,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 215,
-                          child: DropdownButtonFormField<UserRole>(
-                            initialValue: u.role,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'RBAC Role',
-                            ),
-                            items: [
-                              for (final role in UserRole.values)
-                                DropdownMenuItem(
-                                  value: role,
-                                  child: Text(
-                                    role.label,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 12.5),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.reservedBg,
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: const Text(
+                                    'SUSPENDED (3+ Strikes)',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.reservedRed,
+                                    ),
                                   ),
                                 ),
                             ],
-                            onChanged: (newRole) {
-                              if (newRole != null) {
-                                final res = controller.updateUserRole(
-                                  u.id,
-                                  newRole,
-                                );
+                          ),
+                          Text(
+                            u.role == UserRole.student &&
+                                    u.studentIdNumber != null
+                                ? '${u.email} • ID: ${u.studentIdNumber} • ${u.courseDepartment}'
+                                : '${u.email} • ${u.courseDepartment}',
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: Color(0xFF475569),
+                            ),
+                          ),
+                          if (u.role == UserRole.student)
+                            Text(
+                              'No-Show Strikes: ${u.strikeCount} / 3',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: u.isSuspended
+                                    ? AppTheme.reservedRed
+                                    : AppTheme.availableGreen,
+                              ),
+                            ),
+                        ],
+                      ),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 215,
+                            child: DropdownButtonFormField<UserRole>(
+                              key: ValueKey('role-${u.id}-${u.role.dbValue}'),
+                              initialValue: u.role,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'RBAC Role',
+                              ),
+                              items: [
+                                for (final role in UserRole.values)
+                                  DropdownMenuItem(
+                                    value: role,
+                                    child: Text(
+                                      role.label,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12.5),
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (newRole) {
+                                if (newRole != null) {
+                                  final res = controller.updateUserRole(
+                                    u.id,
+                                    newRole,
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(res.message)),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                          if (u.role == UserRole.student) ...[
+                            OutlinedButton.icon(
+                              key: Key('reset-strikes-${u.id}'),
+                              onPressed: () {
+                                final res = controller
+                                    .resetOrAdjustStudentStrikes(u.id, 0);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text(res.message)),
                                 );
-                              }
-                            },
-                          ),
-                        ),
-                        OutlinedButton.icon(
-                          key: Key('reset-strikes-${u.id}'),
-                          onPressed: () {
-                            final res = controller
-                                .resetOrAdjustStudentStrikes(u.id, 0);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(res.message)),
-                            );
-                          },
-                          icon: const Icon(Icons.restore_rounded, size: 18),
-                          label: const Text('Reset Strikes (0)'),
-                        ),
-                        OutlinedButton.icon(
-                          key: Key('enforce-suspension-${u.id}'),
-                          onPressed: () {
-                            final res = controller
-                                .resetOrAdjustStudentStrikes(u.id, 3);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(res.message)),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.gavel_rounded,
-                            size: 18,
-                            color: AppTheme.reservedRed,
-                          ),
-                          label: const Text('Set 3 Strikes'),
-                        ),
-                      ],
-                    ),
-                  ],
+                              },
+                              icon: const Icon(Icons.restore_rounded, size: 18),
+                              label: const Text('Reset Strikes (0)'),
+                            ),
+                            OutlinedButton.icon(
+                              key: Key('enforce-suspension-${u.id}'),
+                              onPressed: () {
+                                final res = controller
+                                    .resetOrAdjustStudentStrikes(u.id, 3);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(res.message)),
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.gavel_rounded,
+                                size: 18,
+                                color: AppTheme.reservedRed,
+                              ),
+                              label: const Text('Set 3 Strikes'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
         ],
       ),
     );
