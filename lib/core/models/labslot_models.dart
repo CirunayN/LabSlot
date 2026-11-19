@@ -71,7 +71,7 @@ enum BookingStatus {
 
 class UserProfile {
   final String id;
-  final String studentIdNumber;
+  final String? studentIdNumber;
   final String email;
   final String fullName;
   final UserRole role;
@@ -81,7 +81,7 @@ class UserProfile {
 
   const UserProfile({
     required this.id,
-    required this.studentIdNumber,
+    this.studentIdNumber,
     required this.email,
     required this.fullName,
     required this.role,
@@ -90,9 +90,15 @@ class UserProfile {
     this.isSuspended = false,
   });
 
+  String get displayIdOrRole =>
+      (studentIdNumber != null && studentIdNumber!.trim().isNotEmpty)
+          ? studentIdNumber!
+          : role.label;
+
   UserProfile copyWith({
     String? id,
     String? studentIdNumber,
+    bool clearStudentId = false,
     String? email,
     String? fullName,
     UserRole? role,
@@ -102,7 +108,8 @@ class UserProfile {
   }) {
     return UserProfile(
       id: id ?? this.id,
-      studentIdNumber: studentIdNumber ?? this.studentIdNumber,
+      studentIdNumber:
+          clearStudentId ? null : (studentIdNumber ?? this.studentIdNumber),
       email: email ?? this.email,
       fullName: fullName ?? this.fullName,
       role: role ?? this.role,
@@ -114,14 +121,16 @@ class UserProfile {
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
     final strikes = (map['strike_count'] as num?)?.toInt() ?? 0;
+    final rawIdNum = map['student_id_number']?.toString().trim();
     return UserProfile(
       id: map['id']?.toString() ?? '',
-      studentIdNumber: map['student_id_number']?.toString() ?? 'STU-0000',
+      studentIdNumber:
+          (rawIdNum == null || rawIdNum.isEmpty) ? null : rawIdNum,
       email: map['email']?.toString() ?? '',
       fullName: map['full_name']?.toString() ?? 'LabSlot User',
       role: UserRole.fromString(map['role']?.toString() ?? 'student'),
       courseDepartment:
-          map['course_department']?.toString() ?? 'BS Information Technology',
+          map['course_department']?.toString() ?? 'Campus Department',
       strikeCount: strikes,
       isSuspended: (map['is_suspended'] as bool?) ?? (strikes >= 3),
     );
@@ -129,7 +138,12 @@ class UserProfile {
 
   Map<String, dynamic> toMap() => {
         'id': id,
-        'student_id_number': studentIdNumber,
+        'student_id_number':
+            (role == UserRole.student &&
+                    studentIdNumber != null &&
+                    studentIdNumber!.trim().isNotEmpty)
+                ? studentIdNumber!.trim()
+                : null,
         'email': email,
         'full_name': fullName,
         'role': role.dbValue,
@@ -390,25 +404,29 @@ class Booking {
       id: map['id']?.toString() ?? '',
       studentId: map['student_id']?.toString() ?? '',
       studentName: map['student_name']?.toString() ?? 'Student',
-      studentIdNumber: map['student_id_number']?.toString() ?? 'STU-0000',
+      studentIdNumber: map['student_id_number']?.toString() ?? 'N/A',
       roomId: map['room_id']?.toString() ?? '',
       roomName: map['room_name']?.toString() ?? 'Computer Lab',
       stationId: map['station_id']?.toString() ?? '',
       stationNumber: map['station_number']?.toString() ?? 'PC-01',
       courseworkTag: map['coursework_tag']?.toString() ?? 'Flutter',
       scheduledStart:
-          DateTime.tryParse(map['scheduled_start']?.toString() ?? '') ?? now,
-      scheduledEnd: DateTime.tryParse(map['scheduled_end']?.toString() ?? '') ??
+          DateTime.tryParse(map['scheduled_start']?.toString() ?? '')
+                  ?.toLocal() ??
+              now,
+      scheduledEnd: DateTime.tryParse(map['scheduled_end']?.toString() ?? '')
+              ?.toLocal() ??
           now.add(const Duration(hours: 1)),
       durationHours: (map['duration_hours'] as num?)?.toInt() ?? 1,
       gracePeriodDeadline:
-          DateTime.tryParse(map['grace_period_deadline']?.toString() ?? '') ??
+          DateTime.tryParse(map['grace_period_deadline']?.toString() ?? '')
+                  ?.toLocal() ??
               now.add(const Duration(minutes: 10)),
       checkInTime: map['check_in_time'] != null
-          ? DateTime.tryParse(map['check_in_time'].toString())
+          ? DateTime.tryParse(map['check_in_time'].toString())?.toLocal()
           : null,
       checkOutTime: map['check_out_time'] != null
-          ? DateTime.tryParse(map['check_out_time'].toString())
+          ? DateTime.tryParse(map['check_out_time'].toString())?.toLocal()
           : null,
       status: BookingStatus.fromString(map['status']?.toString() ?? 'reserved'),
       idHeld: (map['id_held'] as bool?) ?? false,
@@ -519,10 +537,11 @@ class MaintenanceTicket {
       isResolved: (map['is_resolved'] as bool?) ?? false,
       repairNotes: map['repair_notes']?.toString(),
       resolvedByName: map['resolved_by_name']?.toString(),
-      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ??
+      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '')
+              ?.toLocal() ??
           DateTime.now(),
       resolvedAt: map['resolved_at'] != null
-          ? DateTime.tryParse(map['resolved_at'].toString())
+          ? DateTime.tryParse(map['resolved_at'].toString())?.toLocal()
           : null,
     );
   }
@@ -559,6 +578,7 @@ class ChatMessage {
   final String senderName;
   final UserRole senderRole;
   final String message;
+  final bool isResolved;
   final DateTime createdAt;
 
   const ChatMessage({
@@ -573,8 +593,27 @@ class ChatMessage {
     required this.senderName,
     required this.senderRole,
     required this.message,
+    this.isResolved = false,
     required this.createdAt,
   });
+
+  ChatMessage copyWith({bool? isResolved}) {
+    return ChatMessage(
+      id: id,
+      bookingId: bookingId,
+      roomId: roomId,
+      roomName: roomName,
+      stationNumber: stationNumber,
+      studentId: studentId,
+      studentName: studentName,
+      senderId: senderId,
+      senderName: senderName,
+      senderRole: senderRole,
+      message: message,
+      isResolved: isResolved ?? this.isResolved,
+      createdAt: createdAt,
+    );
+  }
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
@@ -582,14 +621,16 @@ class ChatMessage {
       bookingId: map['booking_id']?.toString(),
       roomId: map['room_id']?.toString() ?? '',
       roomName: map['room_name']?.toString() ?? 'Computer Lab',
-      stationNumber: map['station_number']?.toString() ?? 'PC-01',
+      stationNumber: map['station_number']?.toString() ?? 'Desk Inquiry',
       studentId: map['student_id']?.toString() ?? '',
       studentName: map['student_name']?.toString() ?? 'Student',
       senderId: map['sender_id']?.toString() ?? '',
       senderName: map['sender_name']?.toString() ?? 'User',
       senderRole: UserRole.fromString(map['sender_role']?.toString() ?? 'student'),
       message: map['message']?.toString() ?? '',
-      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ??
+      isResolved: (map['is_resolved'] as bool?) ?? false,
+      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '')
+              ?.toLocal() ??
           DateTime.now(),
     );
   }
@@ -606,6 +647,51 @@ class ChatMessage {
         'sender_name': senderName,
         'sender_role': senderRole.dbValue,
         'message': message,
+        'is_resolved': isResolved,
+        'created_at': createdAt.toUtc().toIso8601String(),
+      };
+}
+
+class AuditLog {
+  final String id;
+  final String? actorId;
+  final String actorName;
+  final String actorRole;
+  final String action;
+  final String details;
+  final DateTime createdAt;
+
+  const AuditLog({
+    required this.id,
+    this.actorId,
+    required this.actorName,
+    required this.actorRole,
+    required this.action,
+    required this.details,
+    required this.createdAt,
+  });
+
+  factory AuditLog.fromMap(Map<String, dynamic> map) {
+    return AuditLog(
+      id: map['id']?.toString() ?? '',
+      actorId: map['actor_id']?.toString(),
+      actorName: map['actor_name']?.toString() ?? 'System',
+      actorRole: map['actor_role']?.toString() ?? 'system',
+      action: map['action']?.toString() ?? '',
+      details: map['details']?.toString() ?? '',
+      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '')
+              ?.toLocal() ??
+          DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'actor_id': actorId,
+        'actor_name': actorName,
+        'actor_role': actorRole,
+        'action': action,
+        'details': details,
         'created_at': createdAt.toUtc().toIso8601String(),
       };
 }
@@ -624,6 +710,7 @@ class AccreditationReport {
   final double averageRepairTurnaroundHours;
   final Map<String, int> softwareDemandCounts;
   final Map<String, int> roomSessionBreakdown;
+  final int totalRecordsEvaluated;
 
   const AccreditationReport({
     required this.scopeTitle,
@@ -639,5 +726,8 @@ class AccreditationReport {
     required this.averageRepairTurnaroundHours,
     required this.softwareDemandCounts,
     required this.roomSessionBreakdown,
+    required this.totalRecordsEvaluated,
   });
+
+  bool get hasRecords => totalRecordsEvaluated > 0;
 }
