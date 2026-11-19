@@ -20,10 +20,12 @@ class LabSlotState {
   final List<Booking> bookings;
   final List<MaintenanceTicket> maintenanceTickets;
   final List<ChatMessage> chatMessages;
+  final List<AuditLog> auditLogs;
   final String selectedRoomId;
   final Set<String> selectedSoftwareFilters;
   final int minimumRamFilterGb;
   final bool onlyAvailableFilter;
+  final bool isSyncing;
 
   const LabSlotState({
     required this.currentUser,
@@ -33,10 +35,12 @@ class LabSlotState {
     required this.bookings,
     required this.maintenanceTickets,
     required this.chatMessages,
+    required this.auditLogs,
     required this.selectedRoomId,
     required this.selectedSoftwareFilters,
     this.minimumRamFilterGb = 0,
     this.onlyAvailableFilter = false,
+    this.isSyncing = false,
   });
 
   LabSlotState copyWith({
@@ -48,10 +52,12 @@ class LabSlotState {
     List<Booking>? bookings,
     List<MaintenanceTicket>? maintenanceTickets,
     List<ChatMessage>? chatMessages,
+    List<AuditLog>? auditLogs,
     String? selectedRoomId,
     Set<String>? selectedSoftwareFilters,
     int? minimumRamFilterGb,
     bool? onlyAvailableFilter,
+    bool? isSyncing,
   }) {
     return LabSlotState(
       currentUser: clearCurrentUser ? null : (currentUser ?? this.currentUser),
@@ -61,18 +67,23 @@ class LabSlotState {
       bookings: bookings ?? this.bookings,
       maintenanceTickets: maintenanceTickets ?? this.maintenanceTickets,
       chatMessages: chatMessages ?? this.chatMessages,
+      auditLogs: auditLogs ?? this.auditLogs,
       selectedRoomId: selectedRoomId ?? this.selectedRoomId,
       selectedSoftwareFilters:
           selectedSoftwareFilters ?? this.selectedSoftwareFilters,
       minimumRamFilterGb: minimumRamFilterGb ?? this.minimumRamFilterGb,
       onlyAvailableFilter: onlyAvailableFilter ?? this.onlyAvailableFilter,
+      isSyncing: isSyncing ?? this.isSyncing,
     );
   }
 
-  LabRoom get selectedRoom => rooms.firstWhere(
-        (r) => r.id == selectedRoomId,
-        orElse: () => rooms.first,
-      );
+  LabRoom? get selectedRoom {
+    if (rooms.isEmpty) return null;
+    for (final r in rooms) {
+      if (r.id == selectedRoomId) return r;
+    }
+    return rooms.first;
+  }
 
   List<PcStation> stationsForRoom(String roomId, {bool applyFilters = true}) {
     final list = stations.where((s) => s.roomId == roomId).toList()
@@ -126,13 +137,104 @@ class LabSlotController extends Notifier<LabSlotState> {
     'Docker',
   ];
 
+  static final RegExp _sixDigitStudentIdRegex = RegExp(r'^\d{6}$');
+
+  // Used strictly when running offline unit/widget tests without Supabase
+  final Map<String, String> _offlinePasswords = {};
+  int _idSeq = 0;
+  RealtimeChannel? _realtimeChannel;
+  Timer? _syncDebounce;
+
+  String _nextId(String prefix) =>
+      '$prefix-${DateTime.now().microsecondsSinceEpoch}-${++_idSeq}';
+
   @override
   LabSlotState build() {
-    final seed = _createSeedState();
+    ref.onDispose(() {
+      _syncDebounce?.cancel();
+      final client = SupabaseConfig.clientOrNull;
+      if (_realtimeChannel != null && client != null) {
+        unawaited(client.removeChannel(_realtimeChannel!));
+      }
+    });
+
     if (SupabaseConfig.isLiveConnected) {
-      Future.microtask(syncFromSupabase);
+      Future.microtask(_bootstrapSupabaseSessionAndRealtime);
     }
-    return seed;
+
+    return const LabSlotState(
+      currentUser: null,
+      users: [],
+      rooms: [],
+      stations: [],
+      bookings: [],
+      maintenanceTickets: [],
+      chatMessages: [],
+      auditLogs: [],
+      selectedRoomId: '',
+      selectedSoftwareFilters: {},
+    );
+  }
+
+  Future<void> _bootstrapSupabaseSessionAndRealtime() async {
+    final client = SupabaseConfig.clientOrNull;
+    if (client == null || !SupabaseConfig.isLiveConnected) return;
+
+    _setupRealtimeSubscriptions(client);
+    await syncFromSupabase();
+
+    // Restore persisted Supabase Auth session if a user is already logged in
+    final authUser = client.auth.currentUser;
+    if (authUser != null && state.currentUser == null) {
+      try {
+        final profileMap = await client
+            .from('profiles')
+            .select()
+            .eq('id', authUser.id)
+            .maybeSingle();
+        if (profileMap != null) {
+          final profile = UserProfile.fromMap(profileMap);
+          state = state.copyWith(
+            currentUser: profile,
+            users: state.users.any((u) => u.id == profile.id)
+                ? state.users
+                : [profile, ...state.users],
+          );
+        }
+      } catch (_) {
+        // Stay on login screen if profile fetch fails
+      }
+    }
+  }
+
+  void _setupRealtimeSubscriptions(SupabaseClient client) {
+    if (_realtimeChannel != null) return;
+    final channel = client.channel('labslot-realtime');
+    const tables = [
+      'profiles',
+      'lab_rooms',
+      'pc_stations',
+      'bookings',
+      'maintenance_tickets',
+      'chat_messages',
+      'audit_logs',
+    ];
+    for (final table in tables) {
+      channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: table,
+        callback: (_) => _scheduleRealtimeSync(),
+      );
+    }
+    _realtimeChannel = channel.subscribe();
+  }
+
+  void _scheduleRealtimeSync() {
+    _syncDebounce?.cancel();
+    _syncDebounce = Timer(const Duration(milliseconds: 280), () {
+      unawaited(syncFromSupabase());
+    });
   }
 
   void _syncToCloud(Future<void> Function(SupabaseClient client) task) {
@@ -140,9 +242,31 @@ class LabSlotController extends Notifier<LabSlotState> {
     if (client == null || !SupabaseConfig.isLiveConnected) return;
     unawaited(
       task(client).catchError((_) {
-        // Keep optimistic UI state active if offline or table not yet created
+        // Optimistic UI remains responsive; realtime/sync will reconcile
       }),
     );
+  }
+
+  void _recordAuditLog({
+    required String action,
+    required String details,
+    UserProfile? explicitActor,
+  }) {
+    final actor = explicitActor ?? state.currentUser;
+    final entry = AuditLog(
+      id: _nextId('aud'),
+      actorId: actor?.id,
+      actorName: actor?.fullName ?? 'System',
+      actorRole: actor?.role.dbValue ?? 'system',
+      action: action,
+      details: details,
+      createdAt: DateTime.now(),
+    );
+
+    state = state.copyWith(auditLogs: [entry, ...state.auditLogs]);
+    _syncToCloud((client) async {
+      await client.from('audit_logs').upsert(entry.toMap());
+    });
   }
 
   Future<ActionResult> syncFromSupabase() async {
@@ -151,79 +275,70 @@ class LabSlotController extends Notifier<LabSlotState> {
       return const ActionResult.err('Supabase client is not initialized.');
     }
 
+    state = state.copyWith(isSyncing: true);
     try {
-      final roomsRows = await client.from('lab_rooms').select();
-      if (roomsRows.isEmpty) {
-        // Auto-seed Supabase tables from our initial state if empty
-        await client
-            .from('profiles')
-            .upsert(state.users.map((u) => u.toMap()).toList());
-        await client
-            .from('lab_rooms')
-            .upsert(state.rooms.map((r) => r.toMap()).toList());
-        await client
+      // Trigger server-side 10-minute ghost-slot auto-release RPC if installed
+      try {
+        await client.rpc('release_expired_ghost_slots');
+      } catch (_) {}
+
+      final results = await Future.wait([
+        client.from('profiles').select().order('created_at', ascending: true),
+        client.from('lab_rooms').select().order('code', ascending: true),
+        client
             .from('pc_stations')
-            .upsert(state.stations.map((s) => s.toMap()).toList());
-        await client
+            .select()
+            .order('station_number', ascending: true),
+        client
             .from('bookings')
-            .upsert(state.bookings.map((b) => b.toMap()).toList());
-        await client
+            .select()
+            .order('scheduled_start', ascending: false),
+        client
             .from('maintenance_tickets')
-            .upsert(state.maintenanceTickets.map((t) => t.toMap()).toList());
-        await client
+            .select()
+            .order('created_at', ascending: false),
+        client
             .from('chat_messages')
-            .upsert(state.chatMessages.map((m) => m.toMap()).toList());
-        return const ActionResult.ok(
-          'Auto-seeded Supabase PostgreSQL tables with LabSlot rooms & 36 PCs!',
-        );
-      }
+            .select()
+            .order('created_at', ascending: true),
+        client
+            .from('audit_logs')
+            .select()
+            .order('created_at', ascending: false)
+            .limit(100),
+      ]);
 
-      final profilesRows = await client.from('profiles').select();
-      final stationsRows = await client.from('pc_stations').select();
-      final bookingsRows = await client
-          .from('bookings')
-          .select()
-          .order('scheduled_start', ascending: false);
-      final ticketsRows = await client
-          .from('maintenance_tickets')
-          .select()
-          .order('created_at', ascending: false);
-      final chatsRows = await client
-          .from('chat_messages')
-          .select()
-          .order('created_at', ascending: true);
-
-      final loadedUsers = profilesRows.isNotEmpty
-          ? profilesRows.map(UserProfile.fromMap).toList()
-          : state.users;
-      final loadedRooms = roomsRows.map(LabRoom.fromMap).toList();
-      final loadedStations = stationsRows.isNotEmpty
-          ? stationsRows.map(PcStation.fromMap).toList()
-          : state.stations;
-      final loadedBookings = bookingsRows.isNotEmpty
-          ? bookingsRows.map(Booking.fromMap).toList()
-          : state.bookings;
-      final loadedTickets = ticketsRows.isNotEmpty
-          ? ticketsRows.map(MaintenanceTicket.fromMap).toList()
-          : state.maintenanceTickets;
-      final loadedChats = chatsRows.isNotEmpty
-          ? chatsRows.map(ChatMessage.fromMap).toList()
-          : state.chatMessages;
-
-      // Ensure stations exist in Supabase if only lab_rooms was seeded
-      if (stationsRows.isEmpty && state.stations.isNotEmpty) {
-        await client
-            .from('pc_stations')
-            .upsert(state.stations.map((s) => s.toMap()).toList());
-      }
+      final loadedUsers =
+          (results[0] as List).map((m) => UserProfile.fromMap(m)).toList();
+      final loadedRooms =
+          (results[1] as List).map((m) => LabRoom.fromMap(m)).toList();
+      final loadedStations =
+          (results[2] as List).map((m) => PcStation.fromMap(m)).toList();
+      final loadedBookings =
+          (results[3] as List).map((m) => Booking.fromMap(m)).toList();
+      final loadedTickets = (results[4] as List)
+          .map((m) => MaintenanceTicket.fromMap(m))
+          .toList();
+      final loadedChats =
+          (results[5] as List).map((m) => ChatMessage.fromMap(m)).toList();
+      final loadedAudits =
+          (results[6] as List).map((m) => AuditLog.fromMap(m)).toList();
 
       final currentId = state.currentUser?.id;
-      final updatedCurrent = currentId != null
-          ? loadedUsers.firstWhere(
-              (u) => u.id == currentId,
-              orElse: () => loadedUsers.first,
-            )
-          : state.currentUser;
+      UserProfile? updatedCurrent = state.currentUser;
+      if (currentId != null) {
+        final match = loadedUsers.where((u) => u.id == currentId);
+        if (match.isNotEmpty) {
+          updatedCurrent = match.first;
+        }
+      }
+
+      String nextSelectedRoomId = state.selectedRoomId;
+      if (loadedRooms.isEmpty) {
+        nextSelectedRoomId = '';
+      } else if (!loadedRooms.any((r) => r.id == nextSelectedRoomId)) {
+        nextSelectedRoomId = loadedRooms.first.id;
+      }
 
       state = state.copyWith(
         users: loadedUsers,
@@ -232,546 +347,285 @@ class LabSlotController extends Notifier<LabSlotState> {
         bookings: loadedBookings,
         maintenanceTickets: loadedTickets,
         chatMessages: loadedChats,
+        auditLogs: loadedAudits,
         currentUser: updatedCurrent,
+        selectedRoomId: nextSelectedRoomId,
+        isSyncing: false,
       );
 
-      return const ActionResult.ok('Synced live data from Supabase PostgreSQL.');
+      return const ActionResult.ok('Synced live data from Supabase.');
     } catch (e) {
-      return ActionResult.err('Using local cache (run schema.sql in Supabase): $e');
+      state = state.copyWith(isSyncing: false);
+      return ActionResult.err('Sync failed: $e');
     }
   }
 
-  static LabSlotState _createSeedState() {
-    final now = DateTime.now();
-
-    final users = <UserProfile>[
-      const UserProfile(
-        id: 'usr-student-1',
-        studentIdNumber: '2024-01042',
-        email: 'marco.santos@campus.edu.ph',
-        fullName: 'Marco Santos',
-        role: UserRole.student,
-        courseDepartment: 'BS Information Technology (3rd Year)',
-        strikeCount: 0,
-        isSuspended: false,
-      ),
-      const UserProfile(
-        id: 'usr-student-2',
-        studentIdNumber: '2024-01889',
-        email: 'angela.reyes@campus.edu.ph',
-        fullName: 'Angela Reyes',
-        role: UserRole.student,
-        courseDepartment: 'BS Computer Science (2nd Year)',
-        strikeCount: 1,
-        isSuspended: false,
-      ),
-      const UserProfile(
-        id: 'usr-student-3',
-        studentIdNumber: '2023-00412',
-        email: 'kevin.lim@campus.edu.ph',
-        fullName: 'Kevin Lim',
-        role: UserRole.student,
-        courseDepartment: 'BS Multimedia Arts (4th Year)',
-        strikeCount: 3,
-        isSuspended: true,
-      ),
-      const UserProfile(
-        id: 'usr-custodian-1',
-        studentIdNumber: 'STAFF-201',
-        email: 'custodian.lab@campus.edu.ph',
-        fullName: 'Engr. Ramon Dela Cruz',
-        role: UserRole.custodian,
-        courseDepartment: 'Campus Laboratory Services',
-      ),
-      const UserProfile(
-        id: 'usr-admin-1',
-        studentIdNumber: 'ADMIN-001',
-        email: 'admin.its@campus.edu.ph',
-        fullName: 'Dr. Elena Villanueva',
-        role: UserRole.admin,
-        courseDepartment: 'College of Computing & ITS Office',
-      ),
-    ];
-
-    final rooms = <LabRoom>[
-      const LabRoom(
-        id: 'room-comlab-1',
-        code: 'COMLAB-1',
-        name: 'ComLab 1 – Mobile & Full-Stack Lab',
-        buildingFloor: '3rd Floor, IT Building',
-        status: RoomStatus.open,
-        totalCapacity: 12,
-        openTime: '07:30',
-        closeTime: '19:00',
-        currentSubjectNote: 'Open Lab for Vacant Period Coursework',
-      ),
-      const LabRoom(
-        id: 'room-comlab-2',
-        code: 'COMLAB-2',
-        name: 'ComLab 2 – Cisco Networking Lab',
-        buildingFloor: '3rd Floor, IT Building',
-        status: RoomStatus.classInSession,
-        totalCapacity: 8,
-        openTime: '07:30',
-        closeTime: '19:00',
-        currentSubjectNote: 'IT-302 Network Routing Lecture in Session',
-      ),
-      const LabRoom(
-        id: 'room-comlab-3',
-        code: 'COMLAB-3',
-        name: 'ComLab 3 – CAD & Multimedia Studio',
-        buildingFloor: '4th Floor, Engineering Wing',
-        status: RoomStatus.open,
-        totalCapacity: 8,
-        openTime: '07:30',
-        closeTime: '19:00',
-        currentSubjectNote: 'Open Lab for 3D & CAD Rendering',
-      ),
-      const LabRoom(
-        id: 'room-comlab-4',
-        code: 'COMLAB-4',
-        name: 'ComLab 4 – General Programming Lab',
-        buildingFloor: '2nd Floor, Main Academic Hall',
-        status: RoomStatus.closed,
-        totalCapacity: 8,
-        openTime: '07:30',
-        closeTime: '19:00',
-        currentSubjectNote: 'Closed for Scheduled Switch Maintenance',
-      ),
-    ];
-
-    final stations = <PcStation>[
-      // ComLab 1 (12 stations)
-      for (int i = 1; i <= 12; i++)
-        PcStation(
-          id: 'st-c1-$i',
-          roomId: 'room-comlab-1',
-          stationNumber: 'PC-${i.toString().padLeft(2, '0')}',
-          status: i == 2
-              ? PcStatus.occupied
-              : i == 5
-                  ? PcStatus.reserved
-                  : i == 9
-                      ? PcStatus.maintenance
-                      : PcStatus.available,
-          cpu: i <= 6 ? 'Intel Core i7-13700' : 'AMD Ryzen 7 5800X',
-          ramGb: i <= 8 ? 32 : 16,
-          gpu: i <= 6 ? 'NVIDIA RTX 3060 12GB' : 'NVIDIA GTX 1660 Super',
-          installedSoftware: [
-            'Flutter',
-            'Android Studio',
-            'VS Code',
-            if (i.isOdd) 'Docker',
-            if (i <= 4) 'Cisco Packet Tracer',
-          ],
-          isDefective: i == 9,
-          defectCategory: i == 9 ? 'Broken Mouse / Peripheral' : null,
-          defectNotes:
-              i == 9 ? 'Left mouse button double-clicking; queued for swap' : null,
-        ),
-      // ComLab 2 (8 stations)
-      for (int i = 1; i <= 8; i++)
-        PcStation(
-          id: 'st-c2-$i',
-          roomId: 'room-comlab-2',
-          stationNumber: 'PC-${i.toString().padLeft(2, '0')}',
-          status: PcStatus.available,
-          cpu: 'Intel Core i5-12400',
-          ramGb: 16,
-          gpu: 'Integrated UHD 730',
-          installedSoftware: const [
-            'Cisco Packet Tracer',
-            'VS Code',
-            'Docker',
-          ],
-        ),
-      // ComLab 3 (8 stations)
-      for (int i = 1; i <= 8; i++)
-        PcStation(
-          id: 'st-c3-$i',
-          roomId: 'room-comlab-3',
-          stationNumber: 'PC-${i.toString().padLeft(2, '0')}',
-          status: i == 4 ? PcStatus.maintenance : PcStatus.available,
-          cpu: 'Intel Core i9-13900K',
-          ramGb: 32,
-          gpu: 'NVIDIA RTX 4070 12GB',
-          installedSoftware: const [
-            'AutoCAD 2025',
-            'Blender 3D',
-            'VS Code',
-            'Flutter',
-          ],
-          isDefective: i == 4,
-          defectCategory: i == 4 ? 'No Network / Internet' : null,
-          defectNotes: i == 4 ? 'LAN port loose at wall jack' : null,
-        ),
-      // ComLab 4 (8 stations)
-      for (int i = 1; i <= 8; i++)
-        PcStation(
-          id: 'st-c4-$i',
-          roomId: 'room-comlab-4',
-          stationNumber: 'PC-${i.toString().padLeft(2, '0')}',
-          status: PcStatus.available,
-          cpu: 'Intel Core i5-12400',
-          ramGb: 16,
-          gpu: 'Integrated Graphics',
-          installedSoftware: const ['VS Code', 'Flutter'],
-        ),
-    ];
-
-    final bookings = <Booking>[
-      Booking(
-        id: 'bk-seed-active-1',
-        studentId: 'usr-student-2',
-        studentName: 'Angela Reyes',
-        studentIdNumber: '2024-01889',
-        roomId: 'room-comlab-1',
-        roomName: 'ComLab 1 – Mobile & Full-Stack Lab',
-        stationId: 'st-c1-2',
-        stationNumber: 'PC-02',
-        courseworkTag: 'Flutter',
-        scheduledStart: now.subtract(const Duration(minutes: 25)),
-        scheduledEnd: now.add(const Duration(minutes: 35)),
-        durationHours: 1,
-        gracePeriodDeadline: now.subtract(const Duration(minutes: 15)),
-        checkInTime: now.subtract(const Duration(minutes: 22)),
-        status: BookingStatus.checkedIn,
-        idHeld: true,
-        idBinLocation: 'Bin-08',
-        qrAuthCode: 'LS-8821-PC02',
-      ),
-      Booking(
-        id: 'bk-seed-pending-1',
-        studentId: 'usr-student-3',
-        studentName: 'Kevin Lim',
-        studentIdNumber: '2023-00412',
-        roomId: 'room-comlab-1',
-        roomName: 'ComLab 1 – Mobile & Full-Stack Lab',
-        stationId: 'st-c1-5',
-        stationNumber: 'PC-05',
-        courseworkTag: 'Android Studio',
-        scheduledStart: now,
-        scheduledEnd: now.add(const Duration(hours: 2)),
-        durationHours: 2,
-        gracePeriodDeadline: now.add(const Duration(minutes: 9)),
-        status: BookingStatus.reserved,
-        qrAuthCode: 'LS-4092-PC05',
-      ),
-      // Historical completed bookings for Accreditation Analytics
-      Booking(
-        id: 'bk-hist-1',
-        studentId: 'usr-student-1',
-        studentName: 'Marco Santos',
-        studentIdNumber: '2024-01042',
-        roomId: 'room-comlab-1',
-        roomName: 'ComLab 1 – Mobile & Full-Stack Lab',
-        stationId: 'st-c1-9',
-        stationNumber: 'PC-09',
-        courseworkTag: 'Flutter',
-        scheduledStart: now.subtract(const Duration(days: 1, hours: 4)),
-        scheduledEnd: now.subtract(const Duration(days: 1, hours: 2)),
-        durationHours: 2,
-        gracePeriodDeadline:
-            now.subtract(const Duration(days: 1, hours: 3, minutes: 50)),
-        checkInTime:
-            now.subtract(const Duration(days: 1, hours: 3, minutes: 55)),
-        checkOutTime: now.subtract(const Duration(days: 1, hours: 2)),
-        status: BookingStatus.completed,
-        idHeld: false,
-        idBinLocation: 'Bin-03',
-        qrAuthCode: 'LS-1102-PC09',
-      ),
-      Booking(
-        id: 'bk-hist-2',
-        studentId: 'usr-student-2',
-        studentName: 'Angela Reyes',
-        studentIdNumber: '2024-01889',
-        roomId: 'room-comlab-3',
-        roomName: 'ComLab 3 – CAD & Multimedia Studio',
-        stationId: 'st-c3-1',
-        stationNumber: 'PC-01',
-        courseworkTag: 'AutoCAD 2025',
-        scheduledStart: now.subtract(const Duration(days: 2, hours: 5)),
-        scheduledEnd: now.subtract(const Duration(days: 2, hours: 3)),
-        durationHours: 2,
-        gracePeriodDeadline:
-            now.subtract(const Duration(days: 2, hours: 4, minutes: 50)),
-        checkInTime:
-            now.subtract(const Duration(days: 2, hours: 4, minutes: 56)),
-        checkOutTime: now.subtract(const Duration(days: 2, hours: 3)),
-        status: BookingStatus.completed,
-        idHeld: false,
-        idBinLocation: 'Bin-12',
-        qrAuthCode: 'LS-3319-PC01',
-      ),
-      Booking(
-        id: 'bk-hist-3',
-        studentId: 'usr-student-3',
-        studentName: 'Kevin Lim',
-        studentIdNumber: '2023-00412',
-        roomId: 'room-comlab-2',
-        roomName: 'ComLab 2 – Cisco Networking Lab',
-        stationId: 'st-c2-3',
-        stationNumber: 'PC-03',
-        courseworkTag: 'Cisco Packet Tracer',
-        scheduledStart: now.subtract(const Duration(days: 3, hours: 3)),
-        scheduledEnd: now.subtract(const Duration(days: 3, hours: 2)),
-        durationHours: 1,
-        gracePeriodDeadline:
-            now.subtract(const Duration(days: 3, hours: 2, minutes: 50)),
-        status: BookingStatus.noShowCancelled,
-        qrAuthCode: 'LS-7741-PC03',
-      ),
-    ];
-
-    final tickets = <MaintenanceTicket>[
-      MaintenanceTicket(
-        id: 'mt-1',
-        roomId: 'room-comlab-1',
-        roomName: 'ComLab 1 – Mobile & Full-Stack Lab',
-        stationId: 'st-c1-9',
-        stationNumber: 'PC-09',
-        reportedById: 'usr-student-1',
-        reportedByName: 'Marco Santos',
-        lastUserId: 'usr-student-1',
-        lastUserName: 'Marco Santos (2024-01042)',
-        issueCategory: 'Broken Mouse / Peripheral',
-        description: 'Left mouse click fails intermittently while coding.',
-        isResolved: false,
-        createdAt: now.subtract(const Duration(hours: 5)),
-      ),
-      MaintenanceTicket(
-        id: 'mt-2',
-        roomId: 'room-comlab-3',
-        roomName: 'ComLab 3 – CAD & Multimedia Studio',
-        stationId: 'st-c3-4',
-        stationNumber: 'PC-04',
-        reportedById: 'usr-custodian-1',
-        reportedByName: 'Engr. Ramon Dela Cruz',
-        lastUserId: 'usr-student-2',
-        lastUserName: 'Angela Reyes (2024-01889)',
-        issueCategory: 'No Network / Internet',
-        description: 'Ethernet cable clip broken on wall port.',
-        isResolved: false,
-        createdAt: now.subtract(const Duration(hours: 8)),
-      ),
-      MaintenanceTicket(
-        id: 'mt-3',
-        roomId: 'room-comlab-1',
-        roomName: 'ComLab 1 – Mobile & Full-Stack Lab',
-        stationId: 'st-c1-4',
-        stationNumber: 'PC-04',
-        reportedById: 'usr-student-2',
-        reportedByName: 'Angela Reyes',
-        lastUserId: 'usr-student-2',
-        lastUserName: 'Angela Reyes (2024-01889)',
-        issueCategory: 'Missing Required IDE / Software',
-        description: 'Android SDK Command-line tools needed update.',
-        isResolved: true,
-        repairNotes: 'Updated Android SDK Platform 35 and verified emulator.',
-        resolvedByName: 'Engr. Ramon Dela Cruz',
-        createdAt: now.subtract(const Duration(days: 2, hours: 6)),
-        resolvedAt: now.subtract(const Duration(days: 2, hours: 4)),
-      ),
-    ];
-
-    final chats = <ChatMessage>[
-      ChatMessage(
-        id: 'msg-1',
-        bookingId: 'bk-seed-active-1',
-        roomId: 'room-comlab-1',
-        roomName: 'ComLab 1 – Mobile & Full-Stack Lab',
-        stationNumber: 'PC-02',
-        studentId: 'usr-student-2',
-        studentName: 'Angela Reyes',
-        senderId: 'usr-student-2',
-        senderName: 'Angela Reyes',
-        senderRole: UserRole.student,
-        message:
-            'Good day sir! May I request admin permission on PC-02 to start the Android Emulator?',
-        createdAt: now.subtract(const Duration(minutes: 14)),
-      ),
-      ChatMessage(
-        id: 'msg-2',
-        bookingId: 'bk-seed-active-1',
-        roomId: 'room-comlab-1',
-        roomName: 'ComLab 1 – Mobile & Full-Stack Lab',
-        stationNumber: 'PC-02',
-        studentId: 'usr-student-2',
-        studentName: 'Angela Reyes',
-        senderId: 'usr-custodian-1',
-        senderName: 'Engr. Ramon Dela Cruz',
-        senderRole: UserRole.custodian,
-        message:
-            'Copy Angela! Hyper-V permission is now unlocked remotely on PC-02.',
-        createdAt: now.subtract(const Duration(minutes: 12)),
-      ),
-    ];
-
-    return LabSlotState(
-      currentUser: users.first,
-      users: users,
-      rooms: rooms,
-      stations: stations,
-      bookings: bookings,
-      maintenanceTickets: tickets,
-      chatMessages: chats,
-      selectedRoomId: rooms.first.id,
-      selectedSoftwareFilters: const {},
-    );
-  }
-
   // ===========================================================================
-  // AUTH & ROLE SWITCHING
+  // AUTH AND ROLE SWITCHING (Real Supabase Auth + 6-Digit Student ID Support)
   // ===========================================================================
-  void loginAsDemoUser(String userId) {
-    final user = state.users.firstWhere(
-      (u) => u.id == userId,
-      orElse: () => state.users.first,
-    );
-    state = state.copyWith(currentUser: user);
+  void switchActiveAccount(String userId) {
+    final match = state.users.where((u) => u.id == userId);
+    if (match.isEmpty) return;
+    state = state.copyWith(currentUser: match.first);
   }
 
   Future<ActionResult> signInWithCredentials({
-    required String email,
+    required String identifier,
     required String password,
   }) async {
-    final trimmedEmail = email.trim().toLowerCase();
-    if (trimmedEmail.isEmpty || password.isEmpty) {
-      return const ActionResult.err('Please enter both email and password.');
+    final trimmedInput = identifier.trim();
+    if (trimmedInput.isEmpty || password.isEmpty) {
+      return const ActionResult.err(
+        'Please enter your Email or 6-Digit Student ID and password.',
+      );
     }
 
+    String resolvedEmail = trimmedInput.toLowerCase();
+    final isSixDigitId = _sixDigitStudentIdRegex.hasMatch(trimmedInput);
+
     if (SupabaseConfig.isLiveConnected) {
+      final client = SupabaseConfig.clientOrNull!;
       try {
-        final client = SupabaseConfig.clientOrNull!;
+        if (isSixDigitId) {
+          final profileById = await client
+              .from('profiles')
+              .select('email')
+              .eq('student_id_number', trimmedInput)
+              .maybeSingle();
+          if (profileById == null ||
+              (profileById['email']?.toString().isEmpty ?? true)) {
+            return ActionResult.err(
+              'No student account found with Student ID "$trimmedInput".',
+            );
+          }
+          resolvedEmail = profileById['email'].toString().trim().toLowerCase();
+        }
+
         final res = await client.auth.signInWithPassword(
-          email: trimmedEmail,
+          email: resolvedEmail,
           password: password,
         );
-        if (res.user != null) {
-          final profileMap = await client
-              .from('profiles')
-              .select()
-              .eq('id', res.user!.id)
-              .maybeSingle();
-          if (profileMap != null) {
-            final profile = UserProfile.fromMap(profileMap);
-            final exists = state.users.any((u) => u.id == profile.id);
-            state = state.copyWith(
-              users: exists ? state.users : [profile, ...state.users],
-              currentUser: profile,
-            );
-            await syncFromSupabase();
-            return ActionResult.ok('Welcome back, ${profile.fullName}!');
-          }
+        if (res.user == null) {
+          return const ActionResult.err('Invalid login credentials.');
         }
-      } catch (_) {
-        // Fallback to seeded demo credentials if user hasn't been added to auth.users yet
+
+        final profileMap = await client
+            .from('profiles')
+            .select()
+            .eq('id', res.user!.id)
+            .maybeSingle();
+
+        final UserProfile profile;
+        if (profileMap != null) {
+          profile = UserProfile.fromMap(profileMap);
+        } else {
+          final meta = res.user!.userMetadata ?? const <String, dynamic>{};
+          final metaRole =
+              UserRole.fromString(meta['role']?.toString() ?? 'student');
+          profile = UserProfile(
+            id: res.user!.id,
+            studentIdNumber: metaRole == UserRole.student
+                ? meta['student_id_number']?.toString()
+                : null,
+            email: resolvedEmail,
+            fullName: meta['full_name']?.toString() ??
+                resolvedEmail.split('@').first,
+            role: metaRole,
+            courseDepartment:
+                meta['course_department']?.toString() ?? 'Campus Department',
+          );
+          await client.from('profiles').upsert(profile.toMap());
+        }
+
+        state = state.copyWith(
+          currentUser: profile,
+          users: state.users.any((u) => u.id == profile.id)
+              ? state.users
+              : [profile, ...state.users],
+        );
+        await syncFromSupabase();
+        return ActionResult.ok('Welcome back, ${profile.fullName}!');
+      } on AuthException catch (e) {
+        return ActionResult.err(e.message);
+      } catch (e) {
+        return ActionResult.err('Login failed: $e');
       }
     }
 
-    final match = state.users.where(
-      (u) => u.email.toLowerCase() == trimmedEmail,
-    );
-    if (match.isNotEmpty) {
-      state = state.copyWith(currentUser: match.first);
-      return ActionResult.ok('Signed in as ${match.first.fullName}.');
+    // Offline unit-test mode (verifies real matching password)
+    if (isSixDigitId) {
+      final byId = state.users.where((u) => u.studentIdNumber == trimmedInput);
+      if (byId.isEmpty) {
+        return ActionResult.err(
+          'No student account found with Student ID "$trimmedInput".',
+        );
+      }
+      resolvedEmail = byId.first.email.toLowerCase();
     }
 
-    // Create a new student profile and persist to Supabase
-    final newProfile = UserProfile(
-      id: 'usr-${DateTime.now().millisecondsSinceEpoch}',
-      studentIdNumber:
-          '2026-${(1000 + state.users.length).toString().padLeft(4, '0')}',
-      email: trimmedEmail,
-      fullName: trimmedEmail.split('@').first.replaceAll('.', ' ').toUpperCase(),
-      role: UserRole.student,
-      courseDepartment: 'BS Information Technology',
+    final match = state.users.where(
+      (u) => u.email.toLowerCase() == resolvedEmail,
     );
-    state = state.copyWith(
-      users: [...state.users, newProfile],
-      currentUser: newProfile,
-    );
-    _syncToCloud((client) async {
-      await client.from('profiles').upsert(newProfile.toMap());
-    });
-    return ActionResult.ok('Signed in as ${newProfile.fullName}.');
+    if (match.isEmpty) {
+      return const ActionResult.err('Invalid email/Student ID or password.');
+    }
+    final expectedPassword = _offlinePasswords[resolvedEmail];
+    if (expectedPassword == null || expectedPassword != password) {
+      return const ActionResult.err('Invalid email/Student ID or password.');
+    }
+
+    state = state.copyWith(currentUser: match.first);
+    return ActionResult.ok('Welcome back, ${match.first.fullName}!');
   }
 
   Future<ActionResult> signUpWithCredentials({
     required String email,
     required String password,
     required String fullName,
-    required String studentIdNumber,
+    String? studentIdNumber,
     required String courseDepartment,
     required UserRole role,
   }) async {
     final cleanEmail = email.trim().toLowerCase();
     final cleanName = fullName.trim();
-    final cleanIdNum = studentIdNumber.trim();
-    if (cleanEmail.isEmpty ||
-        password.length < 6 ||
-        cleanName.isEmpty ||
-        cleanIdNum.isEmpty) {
+    final cleanIdNum = studentIdNumber?.trim();
+
+    if (cleanName.isEmpty || cleanEmail.isEmpty || !cleanEmail.contains('@')) {
       return const ActionResult.err(
-        'Please complete all fields (password must be at least 6 characters).',
+        'Please enter a valid full name and campus email address.',
+      );
+    }
+    if (password.length < 6) {
+      return const ActionResult.err(
+        'Password must be at least 6 characters long.',
       );
     }
 
-    String newUserId = 'usr-${DateTime.now().millisecondsSinceEpoch}';
+    if (role == UserRole.student) {
+      if (cleanIdNum == null || !_sixDigitStudentIdRegex.hasMatch(cleanIdNum)) {
+        return const ActionResult.err(
+          'Student ID must be exactly 6 numeric digits (e.g., 123456).',
+        );
+      }
+    }
+
+    final effectiveStudentId = role == UserRole.student ? cleanIdNum : null;
+    final cleanDept = courseDepartment.trim().isEmpty
+        ? (role == UserRole.student
+            ? 'BS Information Technology'
+            : role == UserRole.custodian
+                ? 'Campus Laboratory Services'
+                : 'ITS Administration')
+        : courseDepartment.trim();
+
+    String newUserId = _nextId('usr');
 
     if (SupabaseConfig.isLiveConnected) {
+      final client = SupabaseConfig.clientOrNull!;
       try {
-        final client = SupabaseConfig.clientOrNull!;
+        if (effectiveStudentId != null) {
+          final existingId = await client
+              .from('profiles')
+              .select('id')
+              .eq('student_id_number', effectiveStudentId)
+              .maybeSingle();
+          if (existingId != null) {
+            return ActionResult.err(
+              'Student ID "$effectiveStudentId" is already registered.',
+            );
+          }
+        }
+
         final authRes = await client.auth.signUp(
           email: cleanEmail,
           password: password,
           data: {
             'full_name': cleanName,
-            'student_id_number': cleanIdNum,
-            'course_department': courseDepartment.trim(),
+            'student_id_number': ?effectiveStudentId,
+            'course_department': cleanDept,
             'role': role.dbValue,
           },
         );
-        if (authRes.user != null) {
-          newUserId = authRes.user!.id;
+        if (authRes.user == null) {
+          return const ActionResult.err(
+            'Could not complete registration. Please check your details.',
+          );
         }
+        newUserId = authRes.user!.id;
+
+        final newProfile = UserProfile(
+          id: newUserId,
+          studentIdNumber: effectiveStudentId,
+          email: cleanEmail,
+          fullName: cleanName,
+          role: role,
+          courseDepartment: cleanDept,
+        );
+
+        await client.from('profiles').upsert(newProfile.toMap());
+
+        state = state.copyWith(
+          users: [
+            newProfile,
+            ...state.users.where((u) => u.id != newProfile.id),
+          ],
+          currentUser: newProfile,
+        );
+        _recordAuditLog(
+          action: 'USER_REGISTERED',
+          details: 'Registered ${newProfile.fullName} (${newProfile.role.label})',
+          explicitActor: newProfile,
+        );
+        await syncFromSupabase();
+        return ActionResult.ok(
+          'Account created for ${newProfile.fullName} (${newProfile.role.label}).',
+        );
+      } on AuthException catch (e) {
+        return ActionResult.err(e.message);
       } catch (e) {
-        return ActionResult.err('Supabase sign-up error: $e');
+        return ActionResult.err('Registration failed: $e');
       }
+    }
+
+    // Offline unit-test mode
+    if (state.users.any((u) => u.email.toLowerCase() == cleanEmail)) {
+      return const ActionResult.err('Email address is already registered.');
+    }
+    if (effectiveStudentId != null &&
+        state.users.any((u) => u.studentIdNumber == effectiveStudentId)) {
+      return ActionResult.err(
+        'Student ID "$effectiveStudentId" is already registered.',
+      );
     }
 
     final newProfile = UserProfile(
       id: newUserId,
-      studentIdNumber: cleanIdNum,
+      studentIdNumber: effectiveStudentId,
       email: cleanEmail,
       fullName: cleanName,
       role: role,
-      courseDepartment: courseDepartment.trim().isEmpty
-          ? 'BS Information Technology'
-          : courseDepartment.trim(),
+      courseDepartment: cleanDept,
     );
 
+    _offlinePasswords[cleanEmail] = password;
     state = state.copyWith(
-      users: [
-        newProfile,
-        ...state.users.where((u) => u.id != newProfile.id),
-      ],
+      users: [newProfile, ...state.users],
       currentUser: newProfile,
     );
-
-    _syncToCloud((client) async {
-      await client.from('profiles').upsert(newProfile.toMap());
-    });
+    _recordAuditLog(
+      action: 'USER_REGISTERED',
+      details: 'Registered ${newProfile.fullName} (${newProfile.role.label})',
+      explicitActor: newProfile,
+    );
 
     return ActionResult.ok(
-      'Account created & signed in as ${newProfile.fullName} (${newProfile.role.label}).',
+      'Account created for ${newProfile.fullName} (${newProfile.role.label}).',
     );
   }
 
   void signOut() {
     if (SupabaseConfig.isLiveConnected) {
-      SupabaseConfig.clientOrNull?.auth.signOut();
+      unawaited(SupabaseConfig.clientOrNull?.auth.signOut());
     }
     state = state.copyWith(clearCurrentUser: true);
   }
@@ -829,7 +683,7 @@ class LabSlotController extends Notifier<LabSlotState> {
       );
     }
 
-    // Validation 2: Duration 1–2 hours check
+    // Validation 2: Duration 1-2 hours check
     if (durationHours < 1 || durationHours > 2) {
       return const ActionResult.err(
         'Invalid slot duration: Bookings must be between 1 and 2 hours.',
@@ -848,7 +702,11 @@ class LabSlotController extends Notifier<LabSlotState> {
       return const ActionResult.err('Selected PC station does not exist.');
     }
     final station = state.stations[stationIndex];
-    final room = state.rooms.firstWhere((r) => r.id == station.roomId);
+    final roomMatch = state.rooms.where((r) => r.id == station.roomId);
+    if (roomMatch.isEmpty) {
+      return const ActionResult.err('Laboratory room not found.');
+    }
+    final room = roomMatch.first;
 
     // Validation 4: Room open check
     if (room.status != RoomStatus.open) {
@@ -866,14 +724,14 @@ class LabSlotController extends Notifier<LabSlotState> {
 
     final now = DateTime.now();
     final codeSuffix =
-        (1000 + DateTime.now().millisecond % 8999).toString().padLeft(4, '0');
+        (1000 + now.microsecondsSinceEpoch % 8999).toString().padLeft(4, '0');
     final qrCode = 'LS-$codeSuffix-${station.stationNumber.replaceAll('-', '')}';
 
     final newBooking = Booking(
-      id: 'bk-${now.millisecondsSinceEpoch}',
+      id: _nextId('bk'),
       studentId: user.id,
       studentName: user.fullName,
-      studentIdNumber: user.studentIdNumber,
+      studentIdNumber: user.displayIdOrRole,
       roomId: room.id,
       roomName: room.name,
       stationId: station.id,
@@ -942,10 +800,12 @@ class LabSlotController extends Notifier<LabSlotState> {
 
     final updatedBooking = updatedBookings[idx];
     final targetStation =
-        updatedStations.firstWhere((s) => s.id == booking.stationId);
+        updatedStations.where((s) => s.id == booking.stationId);
     _syncToCloud((client) async {
       await client.from('bookings').upsert(updatedBooking.toMap());
-      await client.from('pc_stations').upsert(targetStation.toMap());
+      if (targetStation.isNotEmpty) {
+        await client.from('pc_stations').upsert(targetStation.first.toMap());
+      }
     });
 
     return ActionResult.ok(
@@ -991,7 +851,10 @@ class LabSlotController extends Notifier<LabSlotState> {
 
     final current = state.currentUser;
     final updatedCurrent = current != null && current.id == booking.studentId
-        ? updatedUsers.firstWhere((u) => u.id == current.id)
+        ? updatedUsers.firstWhere(
+            (u) => u.id == current.id,
+            orElse: () => current,
+          )
         : current;
 
     state = state.copyWith(
@@ -1003,13 +866,16 @@ class LabSlotController extends Notifier<LabSlotState> {
 
     final expiredBooking = updatedBookings[idx];
     final releasedStation =
-        updatedStations.firstWhere((s) => s.id == booking.stationId);
-    final penalizedUser =
-        updatedUsers.firstWhere((u) => u.id == booking.studentId);
+        updatedStations.where((s) => s.id == booking.stationId);
+    final penalizedUser = updatedUsers.where((u) => u.id == booking.studentId);
     _syncToCloud((client) async {
       await client.from('bookings').upsert(expiredBooking.toMap());
-      await client.from('pc_stations').upsert(releasedStation.toMap());
-      await client.from('profiles').upsert(penalizedUser.toMap());
+      if (releasedStation.isNotEmpty) {
+        await client.from('pc_stations').upsert(releasedStation.first.toMap());
+      }
+      if (penalizedUser.isNotEmpty) {
+        await client.from('profiles').upsert(penalizedUser.first.toMap());
+      }
     });
 
     return ActionResult.ok(
@@ -1018,7 +884,7 @@ class LabSlotController extends Notifier<LabSlotState> {
   }
 
   // ===========================================================================
-  // STUDENT USE CASE 4: Process Defective PC Station Report
+  // STUDENT USE CASE 4 AND CUSTODIAN UC 9: Process Defective PC Station Report
   // ===========================================================================
   ActionResult reportDefectivePcStation({
     required String stationId,
@@ -1031,7 +897,7 @@ class LabSlotController extends Notifier<LabSlotState> {
     }
     if (issueCategory.trim().isEmpty || description.trim().isEmpty) {
       return const ActionResult.err(
-        'Report not submitted: Please select a hardware/software defect category and provide details.',
+        'Report not submitted: Please select a defect category and provide details.',
       );
     }
 
@@ -1043,6 +909,18 @@ class LabSlotController extends Notifier<LabSlotState> {
     if (station.isDefective || station.status == PcStatus.maintenance) {
       return ActionResult.err(
         'Report not submitted: ${station.stationNumber} is already quarantined Under Maintenance.',
+      );
+    }
+
+    // Protect another student's active Occupied session from unauthorized quarantine
+    final activeOccupancy = state.bookings.where(
+      (b) => b.stationId == stationId && b.status == BookingStatus.checkedIn,
+    );
+    if (activeOccupancy.isNotEmpty &&
+        reporter.role == UserRole.student &&
+        activeOccupancy.first.studentId != reporter.id) {
+      return ActionResult.err(
+        'Cannot quarantine ${station.stationNumber}: Another student is currently checked into this workstation.',
       );
     }
 
@@ -1060,7 +938,7 @@ class LabSlotController extends Notifier<LabSlotState> {
     }
 
     final ticket = MaintenanceTicket(
-      id: 'mt-${DateTime.now().millisecondsSinceEpoch}',
+      id: _nextId('mt'),
       roomId: room.id,
       roomName: room.name,
       stationId: station.id,
@@ -1094,6 +972,11 @@ class LabSlotController extends Notifier<LabSlotState> {
       await client.from('pc_stations').upsert(quarantinedStation.toMap());
       await client.from('maintenance_tickets').upsert(ticket.toMap());
     });
+    _recordAuditLog(
+      action: 'PC_QUARANTINED',
+      details:
+          '${station.stationNumber} in ${room.code} flagged for ${ticket.issueCategory}',
+    );
 
     return ActionResult.ok(
       '${station.stationNumber} quarantined as Under Maintenance and queued for custodian inspection.',
@@ -1101,7 +984,7 @@ class LabSlotController extends Notifier<LabSlotState> {
   }
 
   // ===========================================================================
-  // STUDENT UC 5 & CUSTODIAN UC 10: Relay & Manage Help Desk Messages
+  // STUDENT UC 5 AND CUSTODIAN UC 10: Relay and Manage Help Desk Messages
   // ===========================================================================
   ActionResult sendHelpDeskMessage({
     required String messageText,
@@ -1117,16 +1000,24 @@ class LabSlotController extends Notifier<LabSlotState> {
     if (trimmed.isEmpty) {
       return const ActionResult.err('Please enter a message before sending.');
     }
+    if (state.rooms.isEmpty) {
+      return const ActionResult.err(
+        'No computer laboratories exist yet. Please ask an Admin to create a lab room first.',
+      );
+    }
 
     final activeBooking = state.activeBookingForCurrentUser;
     final room = targetRoomId != null
         ? state.rooms.firstWhere(
             (r) => r.id == targetRoomId,
-            orElse: () => state.selectedRoom,
+            orElse: () => state.selectedRoom ?? state.rooms.first,
           )
         : (activeBooking != null
-            ? state.rooms.firstWhere((r) => r.id == activeBooking.roomId)
-            : state.selectedRoom);
+            ? state.rooms.firstWhere(
+                (r) => r.id == activeBooking.roomId,
+                orElse: () => state.rooms.first,
+              )
+            : (state.selectedRoom ?? state.rooms.first));
 
     final studentProfile = targetStudentId != null
         ? state.users.firstWhere(
@@ -1135,11 +1026,12 @@ class LabSlotController extends Notifier<LabSlotState> {
           )
         : sender;
 
-    final stationNum =
-        targetStationNumber ?? activeBooking?.stationNumber ?? 'PC-01';
+    final stationNum = targetStationNumber ??
+        activeBooking?.stationNumber ??
+        'Desk Inquiry';
 
     final msg = ChatMessage(
-      id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      id: _nextId('msg'),
       bookingId: activeBooking?.id,
       roomId: room.id,
       roomName: room.name,
@@ -1150,14 +1042,45 @@ class LabSlotController extends Notifier<LabSlotState> {
       senderName: sender.fullName,
       senderRole: sender.role,
       message: trimmed,
+      isResolved: false,
       createdAt: DateTime.now(),
     );
 
-    state = state.copyWith(chatMessages: [...state.chatMessages, msg]);
+    // If student sends a new follow-up message, reopen thread if resolved
+    final updatedChats = state.chatMessages.map((m) {
+      if (sender.role == UserRole.student && m.studentId == studentProfile.id) {
+        return m.copyWith(isResolved: false);
+      }
+      return m;
+    }).toList();
+
+    state = state.copyWith(chatMessages: [...updatedChats, msg]);
     _syncToCloud((client) async {
       await client.from('chat_messages').upsert(msg.toMap());
     });
     return const ActionResult.ok('Support message sent.');
+  }
+
+  ActionResult resolveHelpDeskThread(String studentId) {
+    final updated = state.chatMessages.map((m) {
+      if (m.studentId == studentId) {
+        return m.copyWith(isResolved: true);
+      }
+      return m;
+    }).toList();
+
+    state = state.copyWith(chatMessages: updated);
+    _syncToCloud((client) async {
+      await client
+          .from('chat_messages')
+          .update({'is_resolved': true})
+          .eq('student_id', studentId);
+    });
+    _recordAuditLog(
+      action: 'CHAT_RESOLVED',
+      details: 'Marked help desk thread resolved for student $studentId',
+    );
+    return const ActionResult.ok('Help desk thread marked as resolved.');
   }
 
   // ===========================================================================
@@ -1231,6 +1154,11 @@ class LabSlotController extends Notifier<LabSlotState> {
             .upsert(updatedStations[stationIdx].toMap());
       }
     });
+    _recordAuditLog(
+      action: 'STUDENT_CHECK_IN',
+      details:
+          'Checked in ${booking.studentName} at ${booking.stationNumber} (ID held in $bin)',
+    );
 
     return ActionResult.ok(
       'Checked in ${booking.studentName} at ${booking.stationNumber}. Physical ID stored in $bin.',
@@ -1274,11 +1202,18 @@ class LabSlotController extends Notifier<LabSlotState> {
 
     final completedBooking = updatedBookings[idx];
     final freedStation =
-        updatedStations.firstWhere((s) => s.id == booking.stationId);
+        updatedStations.where((s) => s.id == booking.stationId);
     _syncToCloud((client) async {
       await client.from('bookings').upsert(completedBooking.toMap());
-      await client.from('pc_stations').upsert(freedStation.toMap());
+      if (freedStation.isNotEmpty) {
+        await client.from('pc_stations').upsert(freedStation.first.toMap());
+      }
     });
+    _recordAuditLog(
+      action: 'STUDENT_CHECK_OUT',
+      details:
+          'Checked out ${booking.studentName} from ${booking.stationNumber} (Returned ID from $returnedBin)',
+    );
 
     return ActionResult.ok(
       'Checked out ${booking.studentName}. Returned physical ID from $returnedBin and restored ${booking.stationNumber} to Available.',
@@ -1287,6 +1222,7 @@ class LabSlotController extends Notifier<LabSlotState> {
 
   // ===========================================================================
   // CUSTODIAN USE CASE 8: Manage Laboratory Room Availability
+  // Automatically cancels pending reservations (no strike) when closing room
   // ===========================================================================
   ActionResult updateRoomAvailability({
     required String roomId,
@@ -1306,18 +1242,73 @@ class LabSlotController extends Notifier<LabSlotState> {
           : subjectNote.trim(),
     );
 
-    state = state.copyWith(rooms: updatedRooms);
+    final cancelledBookings = <Booking>[];
+    final affectedStationIds = <String>{};
+    List<Booking> updatedBookings = state.bookings;
+    List<PcStation> updatedStations = state.stations;
+
+    if (newStatus != RoomStatus.open) {
+      updatedBookings = state.bookings.map((b) {
+        if (b.roomId == roomId && b.status == BookingStatus.reserved) {
+          final cancelled = b.copyWith(status: BookingStatus.cancelled);
+          cancelledBookings.add(cancelled);
+          affectedStationIds.add(b.stationId);
+          return cancelled;
+        }
+        return b;
+      }).toList();
+
+      if (affectedStationIds.isNotEmpty) {
+        updatedStations = state.stations.map((s) {
+          if (affectedStationIds.contains(s.id)) {
+            return s.copyWith(
+              status: s.isDefective ? PcStatus.maintenance : PcStatus.available,
+            );
+          }
+          return s;
+        }).toList();
+      }
+    }
+
+    state = state.copyWith(
+      rooms: updatedRooms,
+      bookings: updatedBookings,
+      stations: updatedStations,
+    );
+
     final updatedRoom = updatedRooms[idx];
+    final releasedStations = updatedStations
+        .where((s) => affectedStationIds.contains(s.id))
+        .toList();
     _syncToCloud((client) async {
       await client.from('lab_rooms').upsert(updatedRoom.toMap());
+      if (cancelledBookings.isNotEmpty) {
+        await client
+            .from('bookings')
+            .upsert(cancelledBookings.map((b) => b.toMap()).toList());
+      }
+      if (releasedStations.isNotEmpty) {
+        await client
+            .from('pc_stations')
+            .upsert(releasedStations.map((s) => s.toMap()).toList());
+      }
     });
+    _recordAuditLog(
+      action: 'ROOM_STATUS_CHANGED',
+      details:
+          '${updatedRoom.code} set to ${newStatus.label} (${updatedRoom.currentSubjectNote}); ${cancelledBookings.length} pending bookings released without penalty',
+    );
+
+    final suffix = cancelledBookings.isEmpty
+        ? ''
+        : ' Released ${cancelledBookings.length} pending reservation(s) with zero strike penalty.';
     return ActionResult.ok(
-      'Updated ${updatedRooms[idx].code} status to "${newStatus.label}".',
+      'Updated ${updatedRooms[idx].code} status to "${newStatus.label}".$suffix',
     );
   }
 
   // ===========================================================================
-  // CUSTODIAN USE CASE 9: Manage PC Station Maintenance Queue (Resolve / Flag)
+  // CUSTODIAN USE CASE 9: Manage PC Station Maintenance Queue (Resolve)
   // ===========================================================================
   ActionResult resolveMaintenanceTicket({
     required String ticketId,
@@ -1373,11 +1364,18 @@ class LabSlotController extends Notifier<LabSlotState> {
 
     final resolvedTicket = updatedTickets[idx];
     final restoredStation =
-        updatedStations.firstWhere((s) => s.id == ticket.stationId);
+        updatedStations.where((s) => s.id == ticket.stationId);
     _syncToCloud((client) async {
       await client.from('maintenance_tickets').upsert(resolvedTicket.toMap());
-      await client.from('pc_stations').upsert(restoredStation.toMap());
+      if (restoredStation.isNotEmpty) {
+        await client.from('pc_stations').upsert(restoredStation.first.toMap());
+      }
     });
+    _recordAuditLog(
+      action: 'MAINTENANCE_RESOLVED',
+      details:
+          'Restored ${ticket.stationNumber} (${ticket.roomName}): ${repairNotes.trim()}',
+    );
 
     return ActionResult.ok(
       'Restored ${ticket.stationNumber} (${ticket.roomName}) to Available.',
@@ -1408,7 +1406,7 @@ class LabSlotController extends Notifier<LabSlotState> {
       return ActionResult.err('Room code "$cleanCode" already exists.');
     }
 
-    final newRoomId = 'room-${DateTime.now().millisecondsSinceEpoch}';
+    final newRoomId = _nextId('room');
     final newRoom = LabRoom(
       id: newRoomId,
       code: cleanCode,
@@ -1434,6 +1432,8 @@ class LabSlotController extends Notifier<LabSlotState> {
     state = state.copyWith(
       rooms: [...state.rooms, newRoom],
       stations: [...state.stations, ...newStations],
+      selectedRoomId:
+          state.selectedRoomId.isEmpty ? newRoomId : state.selectedRoomId,
     );
 
     _syncToCloud((client) async {
@@ -1442,6 +1442,10 @@ class LabSlotController extends Notifier<LabSlotState> {
           .from('pc_stations')
           .upsert(newStations.map((s) => s.toMap()).toList());
     });
+    _recordAuditLog(
+      action: 'ROOM_CREATED',
+      details: 'Created $cleanCode (${newRoom.name}) with $initialStationsCount stations',
+    );
 
     return ActionResult.ok(
       'Created $cleanCode with $initialStationsCount PC stations.',
@@ -1490,10 +1494,14 @@ class LabSlotController extends Notifier<LabSlotState> {
       _syncToCloud((client) async {
         await client.from('pc_stations').upsert(target.toMap());
       });
-      return ActionResult.ok('Updated specs & software for $cleanNumber.');
+      _recordAuditLog(
+        action: 'PC_UPDATED',
+        details: 'Updated specs for $cleanNumber in room $roomId',
+      );
+      return ActionResult.ok('Updated workstation specs for $cleanNumber.');
     } else {
       final newStation = PcStation(
-        id: 'st-${DateTime.now().millisecondsSinceEpoch}',
+        id: _nextId('st'),
         roomId: roomId,
         stationNumber: cleanNumber,
         status: PcStatus.available,
@@ -1503,10 +1511,30 @@ class LabSlotController extends Notifier<LabSlotState> {
         installedSoftware: installedSoftware,
       );
       updatedStations.add(newStation);
-      state = state.copyWith(stations: updatedStations);
+
+      // Keep lab_rooms.totalCapacity synced with actual station count
+      final roomStationsCount =
+          updatedStations.where((s) => s.roomId == roomId).length;
+      LabRoom? updatedRoom;
+      final updatedRooms = state.rooms.map((r) {
+        if (r.id == roomId) {
+          updatedRoom = r.copyWith(totalCapacity: roomStationsCount);
+          return updatedRoom!;
+        }
+        return r;
+      }).toList();
+
+      state = state.copyWith(rooms: updatedRooms, stations: updatedStations);
       _syncToCloud((client) async {
         await client.from('pc_stations').upsert(newStation.toMap());
+        if (updatedRoom != null) {
+          await client.from('lab_rooms').upsert(updatedRoom!.toMap());
+        }
       });
+      _recordAuditLog(
+        action: 'PC_ADDED',
+        details: 'Added workstation $cleanNumber to room $roomId',
+      );
       return ActionResult.ok('Added new workstation $cleanNumber.');
     }
   }
@@ -1519,7 +1547,10 @@ class LabSlotController extends Notifier<LabSlotState> {
     if (idx == -1) return const ActionResult.err('User not found.');
 
     final updatedUsers = List<UserProfile>.from(state.users);
-    updatedUsers[idx] = updatedUsers[idx].copyWith(role: newRole);
+    updatedUsers[idx] = updatedUsers[idx].copyWith(
+      role: newRole,
+      clearStudentId: newRole != UserRole.student,
+    );
 
     final current = state.currentUser;
     final updatedCurrent =
@@ -1533,6 +1564,10 @@ class LabSlotController extends Notifier<LabSlotState> {
     _syncToCloud((client) async {
       await client.from('profiles').upsert(targetUser.toMap());
     });
+    _recordAuditLog(
+      action: 'ROLE_UPDATED',
+      details: 'Assigned role "${newRole.label}" to ${targetUser.fullName}',
+    );
     return ActionResult.ok(
       'Assigned role "${newRole.label}" to ${updatedUsers[idx].fullName}.',
     );
@@ -1562,6 +1597,11 @@ class LabSlotController extends Notifier<LabSlotState> {
     _syncToCloud((client) async {
       await client.from('profiles').upsert(targetUser.toMap());
     });
+    _recordAuditLog(
+      action: 'STRIKES_UPDATED',
+      details:
+          'Set ${targetUser.fullName} strikes to $clamped (${suspended ? "Suspended" : "Active"})',
+    );
     return ActionResult.ok(
       suspended
           ? '${updatedUsers[idx].fullName} now has $clamped strikes (Booking Suspended).'
@@ -1577,9 +1617,14 @@ class LabSlotController extends Notifier<LabSlotState> {
     required DateTime startDate,
     required DateTime endDate,
   }) {
-    if (startDate.isAfter(endDate)) {
+    final normalizedStart =
+        DateTime(startDate.year, startDate.month, startDate.day);
+    final normalizedEnd =
+        DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
+
+    if (normalizedStart.isAfter(normalizedEnd)) {
       throw ArgumentError(
-        'Cannot generate report: Start date must precede the end date.',
+        'Cannot generate report: Invalid date range or zero laboratory utilization records found for the selected period.',
       );
     }
 
@@ -1590,15 +1635,17 @@ class LabSlotController extends Notifier<LabSlotState> {
     final relevantBookings = state.bookings.where((b) {
       final matchesRoom =
           roomId == null || roomId == 'ALL' || b.roomId == roomId;
-      final inRange = !b.scheduledStart.isBefore(
-            startDate.subtract(const Duration(days: 1)),
-          ) &&
-          !b.scheduledStart.isAfter(endDate.add(const Duration(days: 1)));
+      final inRange = !b.scheduledStart.isBefore(normalizedStart) &&
+          !b.scheduledStart.isAfter(normalizedEnd);
       return matchesRoom && inRange;
     }).toList();
 
     final relevantTickets = state.maintenanceTickets.where((t) {
-      return roomId == null || roomId == 'ALL' || t.roomId == roomId;
+      final matchesRoom =
+          roomId == null || roomId == 'ALL' || t.roomId == roomId;
+      final inRange = !t.createdAt.isBefore(normalizedStart) &&
+          !t.createdAt.isAfter(normalizedEnd);
+      return matchesRoom && inRange;
     }).toList();
 
     int completedSessions = 0;
@@ -1616,28 +1663,36 @@ class LabSlotController extends Notifier<LabSlotState> {
         seatedHours += b.durationHours;
         softwareDemand[b.courseworkTag] =
             (softwareDemand[b.courseworkTag] ?? 0) + 1;
-        final roomCode = state.rooms
-            .firstWhere((r) => r.id == b.roomId, orElse: () => state.rooms.first)
-            .code;
-        roomBreakdown[roomCode] = (roomBreakdown[roomCode] ?? 0) + b.durationHours;
+        final roomMatch = state.rooms.where((r) => r.id == b.roomId);
+        if (roomMatch.isNotEmpty) {
+          final roomCode = roomMatch.first.code;
+          roomBreakdown[roomCode] =
+              (roomBreakdown[roomCode] ?? 0) + b.durationHours;
+        }
       } else if (b.status == BookingStatus.noShowCancelled) {
         noShows++;
       }
     }
 
+    final daysCount =
+        (DateTime(endDate.year, endDate.month, endDate.day)
+                .difference(normalizedStart)
+                .inDays +
+            1)
+            .clamp(1, 3650);
     final totalStationsCount = targetRooms.fold<int>(
       0,
       (sum, r) =>
           sum + state.stations.where((s) => s.roomId == r.id).length,
     );
-    final availableRoomHours =
-        (totalStationsCount * 8).clamp(8, 10000); // 8 hrs/day baseline
-    final utilizationPercent =
-        ((seatedHours / availableRoomHours) * 100).clamp(4.0, 98.0);
+    final availableRoomHours = totalStationsCount * 8 * daysCount;
+    final utilizationPercent = availableRoomHours == 0
+        ? 0.0
+        : ((seatedHours / availableRoomHours) * 100).clamp(0.0, 100.0);
 
     final resolvedTickets =
         relevantTickets.where((t) => t.isResolved).toList();
-    double avgRepairHours = 2.0;
+    double avgRepairHours = 0.0;
     if (resolvedTickets.isNotEmpty) {
       final totalMinutes = resolvedTickets.fold<int>(0, (sum, t) {
         final end = t.resolvedAt ?? DateTime.now();
@@ -1648,12 +1703,12 @@ class LabSlotController extends Notifier<LabSlotState> {
 
     final scopeTitle = roomId == null || roomId == 'ALL'
         ? 'All Campus Computer Laboratories'
-        : targetRooms.first.name;
+        : (targetRooms.isNotEmpty ? targetRooms.first.name : 'Selected Lab');
 
     return AccreditationReport(
       scopeTitle: scopeTitle,
-      startDate: startDate,
-      endDate: endDate,
+      startDate: normalizedStart,
+      endDate: normalizedEnd,
       totalSessionsCompleted: completedSessions,
       totalSeatedHours: seatedHours,
       totalAvailableRoomHours: availableRoomHours,
@@ -1664,6 +1719,16 @@ class LabSlotController extends Notifier<LabSlotState> {
       averageRepairTurnaroundHours: avgRepairHours,
       softwareDemandCounts: softwareDemand,
       roomSessionBreakdown: roomBreakdown,
+      totalRecordsEvaluated:
+          completedSessions + noShows + relevantTickets.length,
+    );
+  }
+
+  void logReportExport(String format, AccreditationReport report) {
+    _recordAuditLog(
+      action: 'REPORT_EXPORTED_$format',
+      details:
+          'Exported $format compliance report for ${report.scopeTitle} (${report.totalSessionsCompleted} sessions, ${report.totalSeatedHours} hrs)',
     );
   }
 }
@@ -1671,4 +1736,3 @@ class LabSlotController extends Notifier<LabSlotState> {
 final labSlotProvider = NotifierProvider<LabSlotController, LabSlotState>(
   LabSlotController.new,
 );
-
