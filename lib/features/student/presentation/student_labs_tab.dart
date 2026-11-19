@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../../../core/models/labslot_models.dart';
 import '../../../core/providers/labslot_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -8,13 +7,52 @@ import '../../../core/theme/app_theme.dart';
 class StudentLabsTab extends ConsumerWidget {
   final VoidCallback onBookedNavigateToPass;
 
-  const StudentLabsTab({super.key, required this.onBookedNavigateToPass});
+  const StudentLabsTab({
+    super.key,
+    required this.onBookedNavigateToPass,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(labSlotProvider);
     final controller = ref.read(labSlotProvider.notifier);
     final selectedRoom = state.selectedRoom;
+    final isPhone = MediaQuery.sizeOf(context).width < 600;
+
+    if (selectedRoom == null) {
+      return SingleChildScrollView(
+        padding: EdgeInsets.all(isPhone ? 14 : 20),
+        child: const Card(
+          child: Padding(
+            padding: EdgeInsets.all(28),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.desktop_windows_outlined,
+                    size: 48,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'No Computer Laboratories Yet',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Ask a System Administrator to add laboratory rooms and PC stations under Lab Inventory.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final filteredStations = state.stationsForRoom(selectedRoom.id);
     final allRoomStations = state.stationsForRoom(
       selectedRoom.id,
@@ -26,11 +64,10 @@ class StudentLabsTab extends ConsumerWidget {
         .length;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(isPhone ? 14 : 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Fair-use strike warning banner if user has strikes
           if ((state.currentUser?.strikeCount ?? 0) > 0)
             Container(
               width: double.infinity,
@@ -183,7 +220,7 @@ class StudentLabsTab extends ConsumerWidget {
 
           const SizedBox(height: 20),
 
-          // Section 2: Coursework Toolchain & Hardware Spec Filter
+          // Section 2: PC Filters
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -195,7 +232,7 @@ class StudentLabsTab extends ConsumerWidget {
                     children: [
                       const Expanded(
                         child: Text(
-                          '2. Filter PCs by Coursework Software & Hardware Specs',
+                          '2. PC Filters',
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14.5,
@@ -220,10 +257,7 @@ class StudentLabsTab extends ConsumerWidget {
                       for (final tag in LabSlotController.allSoftwareTags)
                         FilterChip(
                           key: Key('filter-chip-$tag'),
-                          label: Text(
-                            tag,
-                            style: const TextStyle(fontSize: 12),
-                          ),
+                          label: Text(tag, style: const TextStyle(fontSize: 12)),
                           selected: state.selectedSoftwareFilters.contains(tag),
                           onSelected: (_) =>
                               controller.toggleSoftwareFilter(tag),
@@ -259,7 +293,7 @@ class StudentLabsTab extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '3. ${selectedRoom.name} — Interactive Workstation Grid',
+                '3. ${selectedRoom.name} - Workstation Grid',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -285,7 +319,7 @@ class StudentLabsTab extends ConsumerWidget {
                 padding: EdgeInsets.all(28),
                 child: Center(
                   child: Text(
-                    'No PC stations match the selected coursework software / RAM filters.',
+                    'No PC stations match the selected coursework software or RAM filters.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF64748B)),
                   ),
@@ -298,7 +332,7 @@ class StudentLabsTab extends ConsumerWidget {
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 235,
-                mainAxisExtent: MediaQuery.sizeOf(context).width < 600 ? 174 : 158,
+                mainAxisExtent: isPhone ? 174 : 158,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
@@ -308,8 +342,12 @@ class StudentLabsTab extends ConsumerWidget {
                 return _PcStationCard(
                   station: pc,
                   room: selectedRoom,
-                  onTapBook: () =>
-                      _showBookingOrDefectModal(context, ref, selectedRoom, pc),
+                  onTapBook: () => _showBookingOrDefectModal(
+                    context,
+                    ref,
+                    selectedRoom,
+                    pc,
+                  ),
                 );
               },
             ),
@@ -352,6 +390,7 @@ class StudentLabsTab extends ConsumerWidget {
   Widget _buildLegendRow() {
     return Wrap(
       spacing: 12,
+      runSpacing: 6,
       children: [
         _legendDot(AppTheme.availableGreen, 'Available'),
         _legendDot(AppTheme.warningAmber, 'Reserved'),
@@ -382,10 +421,29 @@ class StudentLabsTab extends ConsumerWidget {
     LabRoom room,
     PcStation station,
   ) {
+    final state = ref.read(labSlotProvider);
     int selectedDuration = 1;
+
+    // Pre-select coursework matching active software filter if available
     String selectedCoursework = station.installedSoftware.isNotEmpty
         ? station.installedSoftware.first
         : 'Flutter';
+    for (final filterTag in state.selectedSoftwareFilters) {
+      final match = station.installedSoftware.where(
+        (sw) => sw.toLowerCase() == filterTag.toLowerCase(),
+      );
+      if (match.isNotEmpty) {
+        selectedCoursework = match.first;
+        break;
+      }
+    }
+
+    final occupiedByOtherStudent = state.bookings.any(
+      (b) =>
+          b.stationId == station.id &&
+          b.status == BookingStatus.checkedIn &&
+          b.studentId != state.currentUser?.id,
+    );
 
     showModalBottomSheet(
       context: context,
@@ -397,6 +455,10 @@ class StudentLabsTab extends ConsumerWidget {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             final isPhone = MediaQuery.sizeOf(ctx).width < 520;
+            final canBook = station.status == PcStatus.available &&
+                room.status == RoomStatus.open &&
+                !station.isDefective;
+
             return SingleChildScrollView(
               padding: EdgeInsets.only(
                 left: 20,
@@ -470,10 +532,9 @@ class StudentLabsTab extends ConsumerWidget {
                       ],
                     ),
                     const Divider(height: 24),
-                    if (station.status == PcStatus.available &&
-                        room.status == RoomStatus.open) ...[
+                    if (canBook) ...[
                       const Text(
-                        'Process PC Station Slot Reservation (1–2 Hours)',
+                        'Reserve PC Station Slot (1 to 2 Hours)',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
@@ -607,14 +668,32 @@ class StudentLabsTab extends ConsumerWidget {
                             }
                           },
                           icon: const Icon(Icons.qr_code_2_rounded),
-                          label: const Text(
-                            'Confirm Reservation & Generate Pass',
-                          ),
+                          label: const Text('Confirm Reservation'),
                         ),
                       ),
                       const SizedBox(height: 10),
+                    ] else if (!station.isDefective) ...[
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.warningBg,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          room.status != RoomStatus.open
+                              ? 'Reservations unavailable: ${room.code} is currently "${room.status.label}" (${room.currentSubjectNote}).'
+                              : 'Reservations unavailable: ${station.stationNumber} is currently "${station.status.label}".',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF92400E),
+                          ),
+                        ),
+                      ),
                     ],
-                    if (!station.isDefective)
+                    if (!station.isDefective && !occupiedByOtherStudent)
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -627,12 +706,10 @@ class StudentLabsTab extends ConsumerWidget {
                             Icons.report_problem_outlined,
                             color: AppTheme.warningAmber,
                           ),
-                          label: const Text(
-                            'Report Defective Hardware / Quarantine PC',
-                          ),
+                          label: const Text('Report Defective Workstation'),
                         ),
                       )
-                    else
+                    else if (station.isDefective)
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -641,7 +718,7 @@ class StudentLabsTab extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          'Quarantined Under Maintenance: ${station.defectCategory ?? 'Hardware Defect'} — ${station.defectNotes ?? ''}',
+                          'Quarantined Under Maintenance: ${station.defectCategory ?? 'Hardware Defect'} - ${station.defectNotes ?? ''}',
                           style: const TextStyle(fontSize: 12.5),
                         ),
                       ),
@@ -676,62 +753,63 @@ class StudentLabsTab extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedCategory,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Hardware / Software Issue Category',
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedCategory,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Issue Category',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Broken Mouse / Peripheral',
+                            child: Text(
+                              'Broken Mouse / Keyboard Peripheral',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'No Network / Internet',
+                            child: Text(
+                              'No Network / Internet Connection',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Missing Required IDE / Software',
+                            child: Text(
+                              'Missing Required Coursework IDE',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Monitor / Boot Failure',
+                            child: Text(
+                              'Monitor Blank / System Boot Failure',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) {
+                            setDialogState(() => selectedCategory = v);
+                          }
+                        },
                       ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Broken Mouse / Peripheral',
-                          child: Text(
-                            'Broken Mouse / Keyboard Peripheral',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const Key('defect-description-field'),
+                        controller: notesController,
+                        maxLines: 3,
+                        autofillHints: const [],
+                        decoration: const InputDecoration(
+                          labelText: 'Issue Description',
+                          hintText:
+                              'Describe the broken hardware or missing coursework software...',
                         ),
-                        DropdownMenuItem(
-                          value: 'No Network / Internet',
-                          child: Text(
-                            'No Network / Internet Connection',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Missing Required IDE / Software',
-                          child: Text(
-                            'Missing Required Coursework IDE',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Monitor / Boot Failure',
-                          child: Text(
-                            'Monitor Blank / System Boot Failure',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) {
-                          setDialogState(() => selectedCategory = v);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      key: const Key('defect-description-field'),
-                      controller: notesController,
-                      maxLines: 3,
-                      autofillHints: const [],
-                      decoration: const InputDecoration(
-                        labelText: 'Issue Description',
-                        hintText: 'Describe the broken hardware or missing coursework software...',
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               ),
               actions: [
                 TextButton(
@@ -758,7 +836,7 @@ class StudentLabsTab extends ConsumerWidget {
                       ),
                     );
                   },
-                  child: const Text('Submit & Quarantine PC'),
+                  child: const Text('Submit Report'),
                 ),
               ],
             );

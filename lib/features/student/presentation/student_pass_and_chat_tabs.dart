@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,11 +7,61 @@ import '../../../core/models/labslot_models.dart';
 import '../../../core/providers/labslot_controller.dart';
 import '../../../core/theme/app_theme.dart';
 
-class StudentBookingPassTab extends ConsumerWidget {
+class StudentBookingPassTab extends ConsumerStatefulWidget {
   const StudentBookingPassTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StudentBookingPassTab> createState() =>
+      _StudentBookingPassTabState();
+}
+
+class _StudentBookingPassTabState extends ConsumerState<StudentBookingPassTab> {
+  Timer? _countdownTimer;
+  DateTime _now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final now = DateTime.now();
+      setState(() => _now = now);
+
+      final active = ref.read(labSlotProvider).activeBookingForCurrentUser;
+      if (active != null &&
+          active.status == BookingStatus.reserved &&
+          now.isAfter(active.gracePeriodDeadline)) {
+        final res = ref
+            .read(labSlotProvider.notifier)
+            .triggerGhostSlotAutoRelease(active.id);
+        if (mounted && res.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res.message),
+              backgroundColor: AppTheme.warningAmber,
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  String _formatRemainingGrace(DateTime deadline) {
+    final diff = deadline.difference(_now);
+    if (diff.isNegative) return '00:00';
+    final minutes = diff.inMinutes.toString().padLeft(2, '0');
+    final seconds = (diff.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(labSlotProvider);
     final controller = ref.read(labSlotProvider.notifier);
     final activeBooking = state.activeBookingForCurrentUser;
@@ -29,7 +80,7 @@ class StudentBookingPassTab extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Active Digital Booking Pass & Grace Period',
+                'Booking Pass',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 12),
@@ -55,7 +106,7 @@ class StudentBookingPassTab extends ConsumerWidget {
                           ),
                           SizedBox(height: 6),
                           Text(
-                            'Select an available green PC station on the Live Labs grid to generate a 1-to-2-hour Booking Pass.',
+                            'Select an available green PC station in Labs to generate a 1 to 2 hour Booking Pass.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: Color(0xFF64748B)),
                           ),
@@ -123,6 +174,46 @@ class StudentBookingPassTab extends ConsumerWidget {
                             ),
                           ],
                         ),
+                        if (activeBooking.status == BookingStatus.reserved) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.warningBg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.warningAmber.withValues(
+                                  alpha: 0.45,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.timer_outlined,
+                                  size: 18,
+                                  color: AppTheme.warningAmber,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Check-In Grace Countdown: ${_formatRemainingGrace(activeBooking.gracePeriodDeadline)} remaining',
+                                    key: const Key('grace-countdown-text'),
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF92400E),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const Divider(height: 28),
                         Center(
                           child: Wrap(
@@ -155,12 +246,12 @@ class StudentBookingPassTab extends ConsumerWidget {
                                       activeBooking.qrAuthCode,
                                     ),
                                     _passDetailRow(
-                                      'Student Name & ID',
+                                      'Student Details',
                                       '${activeBooking.studentName} (${activeBooking.studentIdNumber})',
                                     ),
                                     _passDetailRow(
                                       'Reserved Slot Window',
-                                      '${timeFormat.format(activeBooking.scheduledStart)} – ${timeFormat.format(activeBooking.scheduledEnd)} (${activeBooking.durationHours} hr)',
+                                      '${timeFormat.format(activeBooking.scheduledStart)} - ${timeFormat.format(activeBooking.scheduledEnd)} (${activeBooking.durationHours} hr)',
                                     ),
                                     _passDetailRow(
                                       activeBooking.status ==
@@ -229,20 +320,33 @@ class StudentBookingPassTab extends ConsumerWidget {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
-              for (final b in userHistory)
-                Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    leading: const Icon(Icons.history_rounded),
-                    title: Text(
-                      '${b.roomName} • ${b.stationNumber} (${b.courseworkTag})',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: Text(
-                      'Code: ${b.qrAuthCode} • ${b.status.label}',
+              if (userHistory.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                      child: Text(
+                        'No past reservations recorded yet.',
+                        style: TextStyle(color: Color(0xFF64748B)),
+                      ),
                     ),
                   ),
-                ),
+                )
+              else
+                for (final b in userHistory)
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: ListTile(
+                      leading: const Icon(Icons.history_rounded),
+                      title: Text(
+                        '${b.roomName} • ${b.stationNumber} (${b.courseworkTag})',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        'Code: ${b.qrAuthCode} • ${b.status.label}',
+                      ),
+                    ),
+                  ),
             ],
           ),
         ),
@@ -302,7 +406,10 @@ class _StudentHelpDeskChatTabState
       _msgController.clear();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res.message)),
+        SnackBar(
+          content: Text(res.message),
+          backgroundColor: AppTheme.reservedRed,
+        ),
       );
     }
   }
@@ -333,7 +440,7 @@ class _StudentHelpDeskChatTabState
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Messages are routed in real time to the on-duty Laboratory Custodian with your room & workstation tag.',
+                    'Messages are routed in real time to the on-duty Laboratory Custodian with your room and workstation tag.',
                     style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
                   ),
                   const SizedBox(height: 10),
@@ -421,8 +528,7 @@ class _StudentHelpDeskChatTabState
                           autofillHints: const [],
                           decoration: const InputDecoration(
                             labelText: 'Help Desk Message',
-                            hintText:
-                                'Message the Laboratory Custodian...',
+                            hintText: 'Message the Laboratory Custodian...',
                           ),
                           onSubmitted: _sendMessage,
                         ),

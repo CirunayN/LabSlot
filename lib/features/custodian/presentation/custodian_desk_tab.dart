@@ -32,7 +32,9 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
       final q = _searchQuery.toLowerCase();
       return b.qrAuthCode.toLowerCase().contains(q) ||
           b.studentName.toLowerCase().contains(q) ||
-          b.stationNumber.toLowerCase().contains(q);
+          b.studentIdNumber.toLowerCase().contains(q) ||
+          b.stationNumber.toLowerCase().contains(q) ||
+          b.roomName.toLowerCase().contains(q);
     }).toList();
 
     final activeList = state.activeCheckedInBookings;
@@ -43,7 +45,7 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top Counter Search Bar (QR Reference Code / Student Name)
+          // Top Counter Search Bar (QR Code, Student Name, Student ID, Room, or PC)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -55,10 +57,9 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                       controller: _searchCodeController,
                       autofillHints: const [],
                       decoration: const InputDecoration(
-                        labelText:
-                            'Search Pending Check-In Queue',
+                        labelText: 'Search Pending Check-In Queue',
                         hintText:
-                            'Enter QR pass code, student name, or PC number (e.g., LS-4092-PC05)',
+                            'Enter QR code, 6-digit student ID, name, or PC number',
                         prefixIcon: Icon(Icons.qr_code_scanner_rounded),
                       ),
                       onChanged: (v) => setState(() => _searchQuery = v.trim()),
@@ -80,9 +81,9 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
           ),
           const SizedBox(height: 20),
 
-          // Section 1: Pending Check-In Queue & Physical School ID Escrow
+          // Section 1: Check-In
           Text(
-            '1. Process Student Check-In & Physical ID Escrow (${pendingList.length} Pending)',
+            '1. Check-In (${pendingList.length} Pending)',
             style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
@@ -99,6 +100,7 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                 child: Center(
                   child: Text(
                     'No pending reservations waiting for counter check-in.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF64748B)),
                   ),
                 ),
@@ -110,9 +112,9 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
 
           const SizedBox(height: 28),
 
-          // Section 2: Active Sessions & Check-Out / Station Release
+          // Section 2: Check-Out
           Text(
-            '2. Active Lab Sessions — Process Check-Out & Return ID (${activeList.length} Seated)',
+            '2. Check-Out (${activeList.length} Seated)',
             style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
@@ -129,6 +131,7 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                 child: Center(
                   child: Text(
                     'No active checked-in workstation sessions right now.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF64748B)),
                   ),
                 ),
@@ -203,7 +206,7 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                             ),
                           ),
                           Text(
-                            '${b.roomName} • Slot: ${timeFormat.format(b.scheduledStart)} – ${timeFormat.format(b.scheduledEnd)}',
+                            '${b.roomName} • Slot: ${timeFormat.format(b.scheduledStart)} - ${timeFormat.format(b.scheduledEnd)}',
                             style: const TextStyle(
                               fontSize: 12.5,
                               color: Color(0xFF475569),
@@ -231,7 +234,7 @@ class _CustodianDeskTabState extends ConsumerState<CustodianDeskTab> {
                         },
                         icon: const Icon(Icons.assignment_returned_rounded),
                         label: Text(
-                          'Return ID (${b.idBinLocation ?? "Bin"}) & Check Out',
+                          'Check Out (${b.idBinLocation ?? "Bin"})',
                         ),
                       ),
                     ],
