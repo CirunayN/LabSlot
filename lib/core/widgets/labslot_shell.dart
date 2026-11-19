@@ -82,17 +82,17 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
         actions: [
           PopupMenuButton<String>(
             key: const Key('actor-switcher-menu'),
-            tooltip: 'Switch Actor / Test RBAC Role',
+            tooltip: 'Switch Account (Testing)',
             icon: const Icon(Icons.switch_account_rounded),
             onSelected: (userId) {
               setState(() => _selectedIndex = 0);
-              controller.loginAsDemoUser(userId);
+              controller.switchActiveAccount(userId);
             },
             itemBuilder: (context) => [
               const PopupMenuItem<String>(
                 enabled: false,
                 child: Text(
-                  'QUICK RBAC ACTOR SWITCHER',
+                  'REGISTERED ACCOUNTS',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
@@ -128,7 +128,9 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
                               ),
                             ),
                             Text(
-                              '${u.role.label}${u.role == UserRole.student ? " • Strikes: ${u.strikeCount}/3" : ""}',
+                              u.role == UserRole.student
+                                  ? '${u.role.label} • ID: ${u.studentIdNumber ?? "N/A"} • Strikes: ${u.strikeCount}/3'
+                                  : u.role.label,
                               style: const TextStyle(
                                 fontSize: 11,
                                 color: Color(0xFF64748B),
@@ -161,7 +163,10 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: safeIndex,
-        onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
+        onDestinationSelected: (idx) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          setState(() => _selectedIndex = idx);
+        },
         destinations: navItems
             .map(
               (item) => NavigationDestination(
@@ -192,7 +197,7 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
         final hasActivePass = state.activeBookingForCurrentUser != null;
         return [
           _RoleNavItem(
-            label: 'Labs & PCs',
+            label: 'Labs',
             icon: Icons.grid_view_outlined,
             selectedIcon: Icons.grid_view_rounded,
             page: StudentLabsTab(
@@ -219,21 +224,22 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
         final openTicketsCount = state.maintenanceTickets
             .where((t) => !t.isResolved)
             .length;
-        final activeThreadsCount = state.chatMessages
+        final unresolvedThreadsCount = state.chatMessages
+            .where((m) => !m.isResolved)
             .map((m) => m.studentId)
             .toSet()
             .length;
 
         return [
           _RoleNavItem(
-            label: 'ID Check-In',
+            label: 'Check-In',
             icon: Icons.badge_outlined,
             selectedIcon: Icons.badge_rounded,
             badgeCount: pendingQueueCount,
             page: const CustodianDeskTab(),
           ),
           _RoleNavItem(
-            label: 'Rooms & Fix',
+            label: 'Maintenance',
             icon: Icons.build_circle_outlined,
             selectedIcon: Icons.build_circle_rounded,
             badgeCount: openTicketsCount,
@@ -243,7 +249,7 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
             label: 'Help Inbox',
             icon: Icons.forum_outlined,
             selectedIcon: Icons.forum_rounded,
-            badgeCount: activeThreadsCount,
+            badgeCount: unresolvedThreadsCount,
             page: const CustodianHelpDeskInboxTab(),
           ),
         ];
@@ -260,7 +266,7 @@ class _LabSlotShellState extends ConsumerState<LabSlotShell> {
             page: AdminInventoryTab(),
           ),
           _RoleNavItem(
-            label: 'Roles & Strikes',
+            label: 'Users',
             icon: Icons.admin_panel_settings_outlined,
             selectedIcon: Icons.admin_panel_settings_rounded,
             badgeCount: flaggedStudents,

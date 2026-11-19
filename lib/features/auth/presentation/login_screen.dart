@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/labslot_models.dart';
 import '../../../core/providers/labslot_controller.dart';
@@ -12,10 +13,11 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _identifierController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _fullNameController = TextEditingController();
-  final _idNumberController = TextEditingController();
+  final _studentIdController = TextEditingController();
   final _departmentController = TextEditingController();
 
   UserRole _selectedSignUpRole = UserRole.student;
@@ -25,10 +27,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
+    _identifierController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _fullNameController.dispose();
-    _idNumberController.dispose();
+    _studentIdController.dispose();
     _departmentController.dispose();
     super.dispose();
   }
@@ -43,13 +46,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         email: _emailController.text,
         password: _passwordController.text,
         fullName: _fullNameController.text,
-        studentIdNumber: _idNumberController.text,
+        studentIdNumber: _selectedSignUpRole == UserRole.student
+            ? _studentIdController.text
+            : null,
         courseDepartment: _departmentController.text,
         role: _selectedSignUpRole,
       );
     } else {
       res = await controller.signInWithCredentials(
-        email: _emailController.text,
+        identifier: _identifierController.text,
         password: _passwordController.text,
       );
     }
@@ -109,7 +114,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                               Text(
-                                'Campus Computer Lab & PC Booking System',
+                                'Campus Computer Laboratory Booking System',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF64748B),
@@ -144,28 +149,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 20),
                     if (_isSignUpMode) ...[
-                      TextField(
-                        key: const Key('signup-fullname-field'),
-                        controller: _fullNameController,
-                        autofillHints: const [],
-                        decoration: const InputDecoration(
-                          labelText: 'Full Name',
-                          hintText: 'Enter your full name (e.g., Marco Santos)',
-                          prefixIcon: Icon(Icons.person_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      TextField(
-                        key: const Key('signup-id-field'),
-                        controller: _idNumberController,
-                        autofillHints: const [],
-                        decoration: const InputDecoration(
-                          labelText: 'School / Staff ID Number',
-                          hintText: 'Enter school or staff ID (e.g., 2024-01042)',
-                          prefixIcon: Icon(Icons.badge_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
                       DropdownButtonFormField<UserRole>(
                         key: const Key('signup-role-dropdown'),
                         initialValue: _selectedSignUpRole,
@@ -192,36 +175,83 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 14),
                       TextField(
-                        key: const Key('signup-department-field'),
-                        controller: _departmentController,
+                        key: const Key('signup-fullname-field'),
+                        controller: _fullNameController,
                         autofillHints: const [],
                         decoration: const InputDecoration(
-                          labelText: 'Course / Department',
-                          hintText:
-                              'Enter degree program or office (e.g., BSIT - 3rd Year)',
-                          prefixIcon: Icon(Icons.school_outlined),
+                          labelText: 'Full Name',
+                          hintText: 'Enter your full name',
+                          prefixIcon: Icon(Icons.person_outline),
                         ),
                       ),
                       const SizedBox(height: 14),
-                    ],
-                    TextField(
-                      key: const Key('login-email-field'),
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [],
-                      decoration: const InputDecoration(
-                        labelText: 'Campus Email Address',
-                        hintText:
-                            'Enter your campus email (e.g., student@campus.edu.ph)',
-                        prefixIcon: Icon(Icons.email_outlined),
+                      if (_selectedSignUpRole == UserRole.student) ...[
+                        TextField(
+                          key: const Key('signup-id-field'),
+                          controller: _studentIdController,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          autofillHints: const [],
+                          decoration: const InputDecoration(
+                            labelText: 'Student ID (6 Digits)',
+                            hintText: 'Enter 6-digit student ID (e.g., 123456)',
+                            prefixIcon: Icon(Icons.badge_outlined),
+                            counterText: '',
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      TextField(
+                        key: const Key('signup-department-field'),
+                        controller: _departmentController,
+                        autofillHints: const [],
+                        decoration: InputDecoration(
+                          labelText: _selectedSignUpRole == UserRole.student
+                              ? 'Course / Department'
+                              : 'Department / Office',
+                          hintText: _selectedSignUpRole == UserRole.student
+                              ? 'Enter degree program (e.g., BSIT - 3rd Year)'
+                              : 'Enter office or unit (e.g., Laboratory Services)',
+                          prefixIcon: const Icon(Icons.school_outlined),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        key: const Key('signup-email-field'),
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [],
+                        decoration: const InputDecoration(
+                          labelText: 'Campus Email Address',
+                          hintText: 'Enter your campus email address',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                      ),
+                    ] else ...[
+                      TextField(
+                        key: const Key('login-email-field'),
+                        controller: _identifierController,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [],
+                        decoration: const InputDecoration(
+                          labelText: 'Email or 6-Digit Student ID',
+                          hintText: 'Enter campus email or 6-digit student ID',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     TextField(
                       key: const Key('login-password-field'),
                       controller: _passwordController,
                       obscureText: _obscurePassword,
                       autofillHints: const [],
+                      onSubmitted: (_) {
+                        if (!_isLoading) _handleAuthAction();
+                      },
                       decoration: InputDecoration(
                         labelText: 'Password',
                         hintText: _isSignUpMode
@@ -260,7 +290,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           _isLoading
                               ? 'Processing...'
                               : (_isSignUpMode
-                                  ? 'Register & Sign In'
+                                  ? 'Create Account'
                                   : 'Sign In to LabSlot'),
                         ),
                       ),

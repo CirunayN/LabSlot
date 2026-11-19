@@ -27,7 +27,7 @@ class LabSlotApp extends ConsumerWidget {
     );
 
     return MaterialApp(
-      title: 'LabSlot – Campus Computer Lab & PC Station Booking System',
+      title: 'LabSlot - Campus Computer Laboratory Booking System',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: currentUser == null ? const LoginScreen() : const LabSlotShell(),
